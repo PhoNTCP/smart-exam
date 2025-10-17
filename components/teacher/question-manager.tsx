@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable } from "@/components/data-table";
@@ -22,6 +22,7 @@ type QuestionRow = {
   createdAt: string;
   updatedAt: string;
   difficulty: number | null;
+  aiReason: string | null;
   choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
 };
 
@@ -50,6 +51,11 @@ export const QuestionManager = () => {
   const [editingQuestion, setEditingQuestion] = useState<QuestionRow | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isSaving, setIsSaving] = useState(false);
+  const [rescoringId, setRescoringId] = useState<string | null>(null);
+  const [reasonPreview, setReasonPreview] = useState<{ open: boolean; question: QuestionRow | null }>({
+    open: false,
+    question: null,
+  });
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -107,6 +113,40 @@ export const QuestionManager = () => {
     setEditingQuestion(row);
     setDialogOpen(true);
   }, []);
+
+  const handleRescore = useCallback(
+    async (id: string) => {
+      setRescoringId(id);
+      try {
+        const response = await fetch("/api/ai/difficulty", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: id }),
+        });
+
+        if (!response.ok) {
+          const json = await response.json().catch(() => ({}));
+          if (response.status === 429) {
+            setFeedback({ type: "error", message: json.message ?? "Queued for nightly batch" });
+            return;
+          }
+          throw new Error(json.message ?? "Rescore failed");
+        }
+
+        setFeedback({ type: "success", message: "ส่งคำขอประเมินความยากสำเร็จ" });
+        startTransition(() => {
+          fetchQuestions();
+          router.refresh();
+        });
+      } catch (error) {
+        console.error(error);
+        setFeedback({ type: "error", message: "ไม่สามารถเรียกประเมินความยากได้" });
+      } finally {
+        setRescoringId(null);
+      }
+    },
+    [fetchQuestions, router],
+  );
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -196,6 +236,30 @@ export const QuestionManager = () => {
         },
       },
       {
+        header: "เหตุผล (AI)",
+        accessorKey: "aiReason",
+        cell: ({ row }) => {
+          const reason = row.original.aiReason;
+          if (!reason) {
+            return <span className="text-xs text-muted-foreground">—</span>;
+          }
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setReasonPreview({
+                  open: true,
+                  question: row.original,
+                })
+              }
+            >
+              ดูเหตุผล
+            </Button>
+          );
+        },
+      },
+      {
         header: "สร้างเมื่อ",
         accessorKey: "createdAt",
       },
@@ -216,15 +280,25 @@ export const QuestionManager = () => {
             >
               <Trash2 className="h-4 w-4" />
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleRescore(row.original.id)}
+              title="Re-score"
+              disabled={rescoringId === row.original.id}
+            >
+              <Sparkles className="h-4 w-4" />
+            </Button>
           </div>
         ),
       },
     ],
-    [handleDelete, handleEdit],
+    [handleDelete, handleEdit, handleRescore, rescoringId],
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <>
+      <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Question Bank</h1>
@@ -365,5 +439,29 @@ export const QuestionManager = () => {
         </div>
       </div>
     </div>
+      <Dialog
+        open={reasonPreview.open}
+        onOpenChange={(open) =>
+          setReasonPreview((prev) => ({
+            open,
+            question: open ? prev.question : null,
+          }))
+        }
+      >
+        <DialogContent className="max-w-lg space-y-3">
+          <DialogHeader>
+            <DialogTitle>เหตุผลจาก AI</DialogTitle>
+          </DialogHeader>
+          {reasonPreview.question ? (
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">{reasonPreview.question.subject}</p>
+              <p className="whitespace-pre-wrap">{reasonPreview.question.aiReason}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">ไม่มีเหตุผลจาก AI</p>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };

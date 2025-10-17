@@ -1,69 +1,59 @@
 import { prisma } from "@/lib/prisma";
 import { authGuard } from "@/lib/auth-guard";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { TeacherReportsDashboard } from "@/components/teacher/reports-dashboard";
 
-// Teacher reports view summarising exam performance
+const toDurationMs = (startedAt: Date, finishedAt?: Date | null) => {
+  const end = finishedAt ?? new Date();
+  return Math.max(0, end.getTime() - startedAt.getTime());
+};
+
 export default async function TeacherReportsPage() {
   const user = await authGuard("teacher");
 
-  // Query exam results for the teacher's exams
   const attempts = await prisma.examAttempt.findMany({
     where: { exam: { createdById: user.id } },
     include: {
-      exam: true,
+      exam: {
+        include: {
+          subjectRef: true,
+        },
+      },
       user: true,
+      answers: true,
     },
     orderBy: { startedAt: "desc" },
-    take: 10,
+    take: 300,
   });
-  type AttemptRecord = (typeof attempts)[number];
+
+  const subjects = Array.from(
+    new Set(
+      attempts
+        .map((attempt) => attempt.exam.subjectRef?.name)
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ).sort();
+
+  const dataset = attempts.map((attempt) => ({
+    attemptId: attempt.id,
+    studentId: attempt.user.id,
+    studentName: attempt.user.name ?? undefined,
+    studentEmail: attempt.user.email,
+    subject: attempt.exam.subjectRef?.name ?? "ไม่ระบุ",
+    subjectCode: attempt.exam.subjectRef?.code ?? "",
+    examTitle: attempt.exam.title,
+    score: attempt.score,
+    answerCount: attempt.answers.length,
+    startedAt: attempt.startedAt.toISOString(),
+    finishedAt: attempt.finishedAt?.toISOString() ?? null,
+    durationMs: attempt.answers.length > 0 ? toDurationMs(attempt.startedAt, attempt.finishedAt) : null,
+  }));
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Render page heading */}
-      <header>
-        <h1 className="text-2xl font-semibold">Reports</h1>
-        <p className="text-sm text-muted-foreground">ภาพรวมความคืบหน้าของนักเรียนล่าสุด</p>
-      </header>
-
-      {/* Render result cards */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {attempts.map((attempt: AttemptRecord) => (
-          <Card key={attempt.id}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                {attempt.user.name ?? attempt.user.email}
-                <Badge>{attempt.finishedAt ? "completed" : "in-progress"}</Badge>
-              </CardTitle>
-              <CardDescription>{attempt.exam.title}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                คะแนน: <span className="font-medium">{attempt.score}</span>
-              </p>
-              <p className="text-sm text-muted-foreground">
-                θ:{" "}
-                <span className="font-medium">
-                  {attempt.thetaStart.toFixed(2)} ➜ {attempt.thetaEnd.toFixed(2)}
-                </span>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                อัปเดตล่าสุด:{" "}
-                {attempt.finishedAt ? attempt.finishedAt.toLocaleString() : attempt.startedAt.toLocaleString()}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-        {attempts.length === 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>ยังไม่มีรายงาน</CardTitle>
-              <CardDescription>เริ่มสร้างข้อสอบเพื่อดูผลลัพธ์ที่นี่</CardDescription>
-            </CardHeader>
-          </Card>
-        )}
-      </div>
-    </div>
+    <TeacherReportsDashboard
+      data={{
+        attempts: dataset,
+        subjects,
+      }}
+    />
   );
 }

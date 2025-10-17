@@ -14,6 +14,34 @@ enum Role {
   teacher
 }
 
+enum SubjectLevel {
+  P1
+  P2
+  P3
+  P4
+  P5
+  P6
+  M1
+  M2
+  M3
+  M4
+  M5
+  M6
+  U1
+  U2
+  U3
+  U4
+  U5
+  U6
+  UNSPECIFIED
+}
+
+enum StudentExamStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+}
+
 model User {
   /// Primary identifier for an account
   id           String     @id @default(cuid())
@@ -30,6 +58,10 @@ model User {
   questions    Question[] @relation("UserQuestions")
   exams        Exam[]     @relation("UserExams")
   attempts     ExamAttempt[]
+  subjectsCreated Subject[]  @relation("TeacherSubjects")
+  enrollments  SubjectEnrollment[] @relation("StudentEnrollments")
+  assignmentsAssigned ExamAssignment[] @relation("AssignmentTeacher")
+  studentExams StudentExam[] @relation("StudentAssignments")
 }
 
 model Question {
@@ -53,6 +85,7 @@ model Question {
   choices      Choice[]
   aiScores     AiScore[]
   attemptLinks AttemptAnswer[]
+  currentExamAttempts ExamAttempt[] @relation("CurrentQuestion")
 }
 
 model Choice {
@@ -75,7 +108,7 @@ model AiScore {
   /// Difficulty score 1 (easy) through 5 (hard)
   difficulty Int
   /// Model reasoning summary
-  reason     String
+  reason     String   @db.Text
   /// Name of the AI model used
   modelName  String
   createdAt  DateTime @default(now())
@@ -88,7 +121,8 @@ model Exam {
   /// Primary identifier for exam sessions
   id          String       @id @default(cuid())
   title       String
-  subject     String
+  subjectId   String
+  subjectRef  Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   /// Toggle for adaptive exam logic
   isAdaptive  Boolean      @default(false)
   createdAt   DateTime     @default(now())
@@ -96,6 +130,10 @@ model Exam {
   createdById String
   createdBy   User         @relation("UserExams", fields: [createdById], references: [id])
   attempts    ExamAttempt[]
+  assignments ExamAssignment[]
+
+  @@index([subjectId])
+  @@index([createdById])
 }
 
 model ExamAttempt {
@@ -114,7 +152,11 @@ model ExamAttempt {
   userId       String
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  currentQuestionId String?
+  currentQuestion   Question? @relation("CurrentQuestion", fields: [currentQuestionId], references: [id], onDelete: SetNull)
+
   answers      AttemptAnswer[]
+  studentExam  StudentExam? @relation("AttemptStudentExam")
 }
 
 model AttemptAnswer {
@@ -134,4 +176,67 @@ model AttemptAnswer {
 
   choiceId     String
   choice       Choice   @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+}
+
+model Subject {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  name        String
+  level       SubjectLevel @default(UNSPECIFIED)
+  createdById String
+  createdBy   User         @relation("TeacherSubjects", fields: [createdById], references: [id])
+  exams       Exam[]
+  enrollments SubjectEnrollment[]
+  assignments ExamAssignment[]
+  createdAt   DateTime     @default(now())
+
+  @@index([createdById])
+}
+
+model SubjectEnrollment {
+  id        String   @id @default(cuid())
+  subjectId String
+  userId    String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  student   User     @relation("StudentEnrollments", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([subjectId, userId])
+  @@index([userId])
+}
+
+model ExamAssignment {
+  id         String   @id @default(cuid())
+  examId     String
+  subjectId  String
+  assignedBy String
+  startAt    DateTime @default(now())
+  dueAt      DateTime?
+  createdAt  DateTime @default(now())
+
+  exam    Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher User    @relation("AssignmentTeacher", fields: [assignedBy], references: [id], onDelete: Cascade)
+
+  studentLinks StudentExam[]
+
+  @@index([subjectId])
+  @@index([examId])
+}
+
+model StudentExam {
+  id           String            @id @default(cuid())
+  assignmentId String
+  studentId    String
+  status       StudentExamStatus @default(ASSIGNED)
+  attemptId    String?          @unique
+  assignedAt   DateTime          @default(now())
+  completedAt  DateTime?
+
+  assignment ExamAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    User           @relation("StudentAssignments", fields: [studentId], references: [id], onDelete: Cascade)
+  attempt    ExamAttempt?   @relation("AttemptStudentExam", fields: [attemptId], references: [id], onDelete: SetNull)
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId])
 }

@@ -1,4 +1,4 @@
-import { BookOpen, FileBarChart } from "lucide-react";
+import { BookOpen, FileBarChart, GraduationCap } from "lucide-react";
 import { authGuard } from "@/lib/auth-guard";
 import { Navbar } from "@/components/navbar";
 import { Sidebar } from "@/components/sidebar";
@@ -9,6 +9,7 @@ export default async function TeacherLayout({ children }: { children: React.Reac
   const user = await authGuard("teacher");
 
   const links = [
+    { href: "/teacher/subjects", label: "Subjects", icon: <GraduationCap className="h-4 w-4" /> },
     { href: "/teacher/questions", label: "Question Bank", icon: <BookOpen className="h-4 w-4" /> },
     { href: "/teacher/reports", label: "Reports", icon: <FileBarChart className="h-4 w-4" /> },
   ];

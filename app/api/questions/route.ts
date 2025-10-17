@@ -23,7 +23,7 @@ const formatQuestion = (question: {
   createdAt: Date;
   updatedAt: Date;
   choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
-  aiScores: Array<{ difficulty: number | null }>;
+  aiScores: Array<{ difficulty: number | null; reason: string | null }>;
 }) => ({
   id: question.id,
   subject: question.subject,
@@ -34,6 +34,7 @@ const formatQuestion = (question: {
   createdAt: question.createdAt,
   updatedAt: question.updatedAt,
   difficulty: question.aiScores[0]?.difficulty ?? null,
+  aiReason: question.aiScores[0]?.reason ?? null,
   choices: question.choices,
 });
 
@@ -91,7 +92,7 @@ export async function GET(request: Request) {
         orderBy: { createdAt: "desc" },
         include: {
           choices: { orderBy: { order: "asc" } },
-          aiScores: { orderBy: { createdAt: "desc" }, take: 1, select: { difficulty: true } },
+          aiScores: { orderBy: { createdAt: "desc" }, take: 1, select: { difficulty: true, reason: true } },
         },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -153,7 +154,7 @@ export async function POST(request: Request) {
       },
       include: {
         choices: { orderBy: { order: "asc" } },
-        aiScores: { orderBy: { createdAt: "desc" }, take: 1, select: { difficulty: true } },
+        aiScores: { orderBy: { createdAt: "desc" }, take: 1, select: { difficulty: true, reason: true } },
       },
     });
 
