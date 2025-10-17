@@ -1,0 +1,137 @@
+// Prisma schema aligned with MySQL backend
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// Role options that control access across the app
+enum Role {
+  student
+  teacher
+}
+
+model User {
+  /// Primary identifier for an account
+  id           String     @id @default(cuid())
+  /// Display name for UI
+  name         String?
+  /// Unique email for login
+  email        String     @unique
+  /// Hashed password for credentials auth
+  passwordHash String
+  /// Role determines protected areas
+  role         Role       @default(student)
+  createdAt    DateTime   @default(now())
+
+  questions    Question[] @relation("UserQuestions")
+  exams        Exam[]     @relation("UserExams")
+  attempts     ExamAttempt[]
+}
+
+model Question {
+  /// Primary identifier for question bank entries
+  id           String     @id @default(cuid())
+  /// Subject grouping (e.g., Math, Science)
+  subject      String
+  /// Target grade level or band
+  gradeLevel   String
+  /// Problem statement text
+  body         String
+  /// Rationale or explanation
+  explanation  String
+  /// Marks question for AI rescoring pipeline
+  shouldRescore Boolean   @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @default(now()) @updatedAt
+
+  createdById  String
+  createdBy    User       @relation("UserQuestions", fields: [createdById], references: [id])
+  choices      Choice[]
+  aiScores     AiScore[]
+  attemptLinks AttemptAnswer[]
+}
+
+model Choice {
+  /// Primary identifier for multiple-choice options
+  id         String   @id @default(cuid())
+  text       String
+  /// Indicates the correct answer
+  isCorrect  Boolean  @default(false)
+  /// Maintains consistent ordering in UI
+  order      Int      @default(0)
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers    AttemptAnswer[]
+}
+
+model AiScore {
+  /// Primary identifier for AI evaluation records
+  id         String   @id @default(cuid())
+  /// Difficulty score 1 (easy) through 5 (hard)
+  difficulty Int
+  /// Model reasoning summary
+  reason     String
+  /// Name of the AI model used
+  modelName  String
+  createdAt  DateTime @default(now())
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model Exam {
+  /// Primary identifier for exam sessions
+  id          String       @id @default(cuid())
+  title       String
+  subject     String
+  /// Toggle for adaptive exam logic
+  isAdaptive  Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+
+  createdById String
+  createdBy   User         @relation("UserExams", fields: [createdById], references: [id])
+  attempts    ExamAttempt[]
+}
+
+model ExamAttempt {
+  /// Primary identifier for each exam run
+  id           String        @id @default(cuid())
+  startedAt    DateTime      @default(now())
+  finishedAt   DateTime?
+  thetaStart   Decimal       @db.Decimal(3, 2)
+  thetaEnd     Decimal       @db.Decimal(3, 2)
+  /// Score awarded for this attempt
+  score        Int
+
+  examId       String
+  exam         Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  answers      AttemptAnswer[]
+}
+
+model AttemptAnswer {
+  /// Primary identifier for per-question response tracking
+  id           String   @id @default(cuid())
+  /// Whether the choice was correct
+  isCorrect    Boolean
+  thetaBefore  Decimal  @db.Decimal(3, 2)
+  thetaAfter   Decimal  @db.Decimal(3, 2)
+  pickedAt     DateTime @default(now())
+
+  attemptId    String
+  attempt      ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  questionId   String
+  question     Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  choiceId     String
+  choice       Choice   @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+}

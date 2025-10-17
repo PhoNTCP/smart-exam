@@ -1,2 +1,67 @@
 # smart-exam
 พัฒนาเว็บแอปพลิเคชันเพื่อเป็นคลังข้อสอบที่ไม่ได้มีแค่การจัดเก็บ แต่ยังใช้ AI ในการวิเคราะห์ความยากง่ายของข้อสอบ
+
+## Tech Stack
+- Next.js 15 (App Router) + TypeScript
+- Tailwind CSS v4 + shadcn/ui (Button, Card, Input, Table, Badge, Dialog, Progress)
+- Prisma ORM + MySQL
+- NextAuth (Credentials provider)
+- ESLint (flat config)
+
+## Project Structure
+```
+app/                          # App router routes & layouts
+├─ (auth)/                    # Public auth pages (login/register)
+├─ (dashboard)/teacher/       # Teacher protected routes
+├─ (dashboard)/student/       # Student protected routes
+├─ api/                       # Next.js route handlers (auth, register)
+├─ globals.css                # Tailwind + shadcn base styles
+├─ layout.tsx                 # Root layout with session provider
+└─ page.tsx                   # Role-aware redirect
+components/
+├─ forms/                     # Login & register form components
+├─ providers/                 # Client-side providers (Session)
+├─ ui/                        # shadcn/ui components
+├─ navbar.tsx                 # Top navigation bar
+├─ sidebar.tsx                # Sidebar navigation
+├─ page-container.tsx         # Shared dashboard container
+└─ data-table.tsx             # TanStack table wrapper
+lib/
+├─ auth.ts                    # NextAuth configuration
+├─ auth-guard.ts              # Server-side role guard helper
+└─ prisma.ts                  # Prisma client singleton
+prisma/
+└─ schema.prisma              # Database schema definition
+```
+
+## Environment Variables
+Copy `.env.example` to `.env` and adjust as needed:
+```env
+DATABASE_URL="mysql://root:root@localhost:3307/ai_exam?connection_limit=10"
+NEXTAUTH_SECRET="dev-secret"
+NEXTAUTH_URL="http://localhost:3000"
+AI_PROVIDER="openai"
+AI_MAX_CALLS_PER_DAY="500"
+```
+
+## Setup
+```bash
+npm install
+npx prisma generate
+npm run db:push   # create tables in your MySQL schema
+npm run dev       # start http://localhost:3000
+```
+
+Optional scripts:
+- `npm run prisma:generate` – regenerate Prisma client
+- `npm run prisma:migrate` – run migrations in deploy mode
+- `npm run db:studio` – open Prisma Studio
+- `npm run db:push` – sync schema using Prisma db push
+- `npm run lint` – run ESLint
+
+## Roles & Navigation
+- `/login`, `/register` – credential-based auth flows
+- `/teacher/...` – teacher dashboard (question bank, reports)
+- `/student/...` – student dashboard (exams, progress)
+
+Server-side pages call `authGuard(role)` to enforce access and redirect automatically.
