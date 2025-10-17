@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ const createDefaultChoices = () =>
   }));
 
 export const QuestionForm = ({ initialValues, submitting, onSubmit }: QuestionFormProps) => {
+  const [subjectOptions, setSubjectOptions] = useState<Array<{ id: string; name: string; code: string }>>([]);
+
   const form = useForm<QuestionFormValues>({
     resolver: zodResolver(questionCreateSchema),
     defaultValues:
@@ -53,6 +55,44 @@ export const QuestionForm = ({ initialValues, submitting, onSubmit }: QuestionFo
       },
     );
   }, [initialValues, form]);
+
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const response = await fetch("/api/subjects/my", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+        const json = await response.json();
+        if (Array.isArray(json.data)) {
+          setSubjectOptions(
+            json.data.map((item: { id: string; name: string; code: string }) => ({
+              id: item.id,
+              name: item.name,
+              code: item.code,
+            })),
+          );
+        }
+      } catch (error) {
+        console.error("Failed to load subjects", error);
+      }
+    };
+
+    fetchSubjects();
+  }, []);
+
+  useEffect(() => {
+    if (subjectOptions.length === 0) {
+      return;
+    }
+    const current = form.getValues("subject");
+    if (!current) {
+      form.setValue("subject", subjectOptions[0].name, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+    }
+  }, [subjectOptions, form]);
 
   const errors = form.formState.errors;
 
@@ -85,7 +125,22 @@ export const QuestionForm = ({ initialValues, submitting, onSubmit }: QuestionFo
       <div className="grid gap-4 md:grid-cols-2">
         <label className="flex flex-col gap-2 text-sm font-medium">
           วิชา
-          <Input placeholder="เช่น Mathematics" {...form.register("subject")} />
+          {subjectOptions.length > 0 ? (
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
+              value={form.watch("subject")}
+              onChange={(event) => form.setValue("subject", event.target.value, { shouldDirty: true, shouldValidate: true })}
+            >
+              <option value="">เลือกวิชา</option>
+              {subjectOptions.map((subject) => (
+                <option key={subject.id} value={subject.name}>
+                  {subject.name} ({subject.code})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Input placeholder="เช่น Mathematics" {...form.register("subject")} />
+          )}
           {errors.subject && <span className="text-xs text-destructive">{errors.subject.message}</span>}
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">

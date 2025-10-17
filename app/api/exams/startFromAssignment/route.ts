@@ -44,6 +44,19 @@ export async function POST(request: Request) {
         throw new Error("ASSIGNMENT_ALREADY_COMPLETED");
       }
 
+      const subject = link.assignment.subject;
+      const teacherId = link.assignment.exam.createdById;
+      const availableQuestions = await tx.question.count({
+        where: {
+          createdById: teacherId,
+          ...(subject?.name ? { subject: subject.name } : {}),
+        },
+      });
+
+      if (availableQuestions === 0) {
+        throw new Error("NO_QUESTIONS_AVAILABLE");
+      }
+
       let attemptId = link.attemptId;
       if (!attemptId) {
         const initialTheta = 0.5;
@@ -125,6 +138,14 @@ export async function POST(request: Request) {
       }
       if (error.message === "ASSIGNMENT_ALREADY_COMPLETED") {
         return NextResponse.json({ message: "งานนี้ทำเสร็จแล้ว" }, { status: 409 });
+      }
+      if (error.message === "NO_QUESTIONS_AVAILABLE") {
+        return NextResponse.json(
+          {
+            message: "ยังไม่มีคำถามในวิชานี้ กรุณาเพิ่มคำถามสำหรับวิชานี้ก่อนมอบหมายข้อสอบ",
+          },
+          { status: 400 },
+        );
       }
     }
     return NextResponse.json({ message: "ไม่สามารถเริ่มทำข้อสอบได้" }, { status: 500 });

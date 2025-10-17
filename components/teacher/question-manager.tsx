@@ -56,6 +56,15 @@ export const QuestionManager = () => {
     open: false,
     question: null,
   });
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<{
+    imported: number;
+    total: number;
+    results: Array<{ row: number; status: "success" | "error"; message?: string }>;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -103,11 +112,6 @@ export const QuestionManager = () => {
       fetchQuestions();
     });
   }, [fetchQuestions]);
-
-  const handleCreate = useCallback(() => {
-    setEditingQuestion(null);
-    setDialogOpen(true);
-  }, []);
 
   const handleEdit = useCallback((row: QuestionRow) => {
     setEditingQuestion(row);
@@ -226,6 +230,24 @@ export const QuestionManager = () => {
         accessorKey: "gradeLevel",
       },
       {
+        header: "โจทย์ (ย่อ)",
+        accessorKey: "body",
+        cell: ({ row }) => (
+          <div
+            className="max-w-xs text-sm text-muted-foreground"
+            title={row.original.body}
+            style={{
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {row.original.body}
+          </div>
+        ),
+      },
+      {
         header: "ความยาก (AI)",
         accessorKey: "difficulty",
         cell: ({ getValue }) => {
@@ -296,6 +318,44 @@ export const QuestionManager = () => {
     [handleDelete, handleEdit, handleRescore, rescoringId],
   );
 
+  const handleImportSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!importFile) {
+      setImportError("กรุณาเลือกไฟล์ Excel");
+      return;
+    }
+    setImporting(true);
+    setImportError(null);
+    setImportSummary(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+      const response = await fetch("/api/questions/import", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        setImportError(json.message ?? "นำเข้าข้อมูลไม่สำเร็จ");
+        return;
+      }
+      setImportSummary(json);
+      setFeedback({
+        type: "success",
+        message: `นำเข้าคำถามสำเร็จ ${json.imported} / ${json.total} ข้อ`,
+      });
+      startTransition(() => {
+        fetchQuestions();
+        router.refresh();
+      });
+    } catch (error) {
+      console.error(error);
+      setImportError("นำเข้าข้อมูลไม่สำเร็จ");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <>
       <div className="flex flex-col gap-6">
@@ -304,47 +364,108 @@ export const QuestionManager = () => {
           <h1 className="text-2xl font-semibold">Question Bank</h1>
           <p className="text-sm text-muted-foreground">จัดการชุดคำถามสำหรับการออกข้อสอบ</p>
         </div>
-        <Dialog
-          open={dialogOpen}
-          onOpenChange={(open) => {
-            setDialogOpen(open);
-            if (!open) {
-              setEditingQuestion(null);
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button onClick={handleCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              เพิ่มคำถาม
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingQuestion ? "แก้ไขคำถาม" : "เพิ่มคำถามใหม่"}</DialogTitle>
-            </DialogHeader>
-            <QuestionForm
-              submitting={isSaving}
-              initialValues={
-                editingQuestion
-                  ? {
-                      subject: editingQuestion.subject,
-                      gradeLevel: editingQuestion.gradeLevel,
-                      body: editingQuestion.body,
-                      explanation: editingQuestion.explanation,
-                      shouldRescore: editingQuestion.shouldRescore,
-                      choices: editingQuestion.choices.map((choice) => ({
-                        text: choice.text,
-                        isCorrect: choice.isCorrect,
-                        order: choice.order,
-                      })),
-                    }
-                  : undefined
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="outline">
+            <a href="/api/questions/import/template" download>
+              ดาวน์โหลดเทมเพลต
+            </a>
+          </Button>
+          <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="secondary">นำเข้าจาก Excel</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>นำเข้าคำถามผ่าน Excel</DialogTitle>
+              </DialogHeader>
+              <form className="space-y-4" onSubmit={handleImportSubmit}>
+                <p className="text-sm text-muted-foreground">
+                  ดาวน์โหลดเทมเพลตและกรอกข้อมูลคำถาม 4 ตัวเลือก (ระบุคำตอบถูกเป็น A-D) แล้วอัปโหลดไฟล์ .xlsx
+                </p>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                />
+                {importError && <p className="text-sm text-destructive">{importError}</p>}
+                {importSummary && (
+                  <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    <p>
+                      นำเข้าสำเร็จ {importSummary.imported} จาก {importSummary.total} ข้อ
+                    </p>
+                    {importSummary.results.some((item) => item.status === "error") && (
+                      <div className="mt-2 max-h-40 overflow-auto rounded bg-destructive/10 p-2 text-xs text-destructive">
+                        {importSummary.results
+                          .filter((item) => item.status === "error")
+                          .map((item) => (
+                            <p key={`error-${item.row}`}>แถว {item.row}: {item.message ?? "ข้อมูลไม่ถูกต้อง"}</p>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setImportDialogOpen(false);
+                      setImportSummary(null);
+                      setImportError(null);
+                      setImportFile(null);
+                    }}
+                  >
+                    ปิด
+                  </Button>
+                  <Button type="submit" disabled={importing}>
+                    {importing ? "กำลังนำเข้า..." : "นำเข้า"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+          <Dialog
+            open={dialogOpen}
+            onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) {
+                setEditingQuestion(null);
               }
-              onSubmit={submitForm}
-            />
-          </DialogContent>
-        </Dialog>
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                เพิ่มคำถาม
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingQuestion ? "แก้ไขคำถาม" : "เพิ่มคำถามใหม่"}</DialogTitle>
+              </DialogHeader>
+              <QuestionForm
+                submitting={isSaving}
+                initialValues={
+                  editingQuestion
+                    ? {
+                        subject: editingQuestion.subject,
+                        gradeLevel: editingQuestion.gradeLevel,
+                        body: editingQuestion.body,
+                        explanation: editingQuestion.explanation,
+                        shouldRescore: editingQuestion.shouldRescore,
+                        choices: editingQuestion.choices.map((choice) => ({
+                          text: choice.text,
+                          isCorrect: choice.isCorrect,
+                          order: choice.order,
+                        })),
+                      }
+                    : undefined
+                }
+                onSubmit={submitForm}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 rounded-md border p-4">

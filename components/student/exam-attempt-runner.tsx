@@ -12,6 +12,7 @@ type AttemptQuestion = {
   subject: string;
   gradeLevel: string;
   hint: string;
+  explanation: string;
   choices: Array<{ id: string; text: string }>;
 };
 
@@ -48,6 +49,7 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
   const [hintVisible, setHintVisible] = useState(false);
   const [pending, setPending] = useState(false);
   const [summary, setSummary] = useState<AttemptSummary | null>(null);
+  const [lastExplanation, setLastExplanation] = useState<string | null>(null);
 
   const submitAnswer = async () => {
     if (!question || !selectedChoice) {
@@ -57,6 +59,7 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
     setPending(true);
     setFeedback(null);
     try {
+      const currentQuestion = question;
       const response = await fetch("/api/exams/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -70,6 +73,14 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
       if (!response.ok) {
         setFeedback({ type: "error", message: json.message ?? "ส่งคำตอบไม่สำเร็จ" });
         return;
+      }
+
+      if (currentQuestion) {
+        if (json.isCorrect) {
+          setLastExplanation(null);
+        } else {
+          setLastExplanation(currentQuestion.explanation);
+        }
       }
 
       if (json.status === "completed") {
@@ -219,6 +230,13 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
             <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
               <p className="font-medium text-foreground">คำใบ้</p>
               <p className="mt-1 leading-relaxed">{question.hint}</p>
+            </div>
+          )}
+
+          {lastExplanation && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <p className="font-medium text-amber-900">เฉลย</p>
+              <p className="mt-1 leading-relaxed text-amber-900">{lastExplanation}</p>
             </div>
           )}
 

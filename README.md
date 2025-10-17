@@ -7,7 +7,7 @@
 - Prisma ORM + MySQL
 - NextAuth (Credentials provider)
 - ESLint (flat config)
-
+cloudflared tunnel --url http://localhost:3000
 ## Project Structure
 ```
 app/                          # App router routes & layouts

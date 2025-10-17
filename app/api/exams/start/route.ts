@@ -43,6 +43,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "ข้อสอบนี้ยังไม่ได้แนบกับวิชา" }, { status: 400 });
     }
 
+    const availableQuestions = await prisma.question.count({
+      where: {
+        createdById: exam.createdById,
+        ...(subject.name ? { subject: subject.name } : {}),
+      },
+    });
+    if (availableQuestions === 0) {
+      return NextResponse.json(
+        {
+          message:
+            "ยังไม่มีคำถามในวิชานี้ กรุณาเพิ่มคำถามอย่างน้อย 1 ข้อในวิชาเดียวกันก่อนเริ่มทำข้อสอบ",
+        },
+        { status: 400 },
+      );
+    }
+
     const enrolled = await prisma.subjectEnrollment.findFirst({
       where: { subjectId: subject.id, userId: session.user.id },
       select: { id: true },
@@ -60,7 +76,48 @@ export async function POST(request: Request) {
       select: { id: true },
     });
     if (existing) {
-      return NextResponse.json({ message: "คุณมีการทำข้อสอบนี้ค้างอยู่" }, { status: 409 });
+      const resume = await ensureCurrentQuestion(existing.id, session.user.id);
+      if (!resume) {
+        return NextResponse.json({ message: "ไม่พบการทำข้อสอบเดิม" }, { status: 404 });
+      }
+
+      const attemptSnapshot = resume.attempt;
+      const thetaResume = toThetaNumber(attemptSnapshot.thetaEnd ?? attemptSnapshot.thetaStart);
+
+      if (resume.status === "completed" || !resume.question) {
+        return NextResponse.json({
+          attemptId: existing.id,
+          status: "completed",
+          exam: {
+            id: exam.id,
+            title: exam.title,
+            subject: subject.name,
+            subjectCode: subject.code,
+          },
+          summary: {
+            answered: resume.answeredCount,
+            total: ADAPTIVE_TOTAL,
+            theta: thetaResume,
+            score: attemptSnapshot.score,
+          },
+        });
+      }
+
+      return NextResponse.json({
+        attemptId: existing.id,
+        status: "in-progress",
+        exam: {
+          id: exam.id,
+          title: exam.title,
+          subject: subject.name,
+          subjectCode: subject.code,
+        },
+        question: resume.question,
+        answeredCount: resume.answeredCount,
+        total: ADAPTIVE_TOTAL,
+        theta: thetaResume,
+        score: attemptSnapshot.score,
+      });
     }
 
     const initialTheta = 0.5;
