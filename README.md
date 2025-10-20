@@ -37,11 +37,18 @@ prisma/
 ## Environment Variables
 Copy `.env.example` to `.env` and adjust as needed:
 ```env
-DATABASE_URL="mysql://root:root@localhost:3307/ai_exam?connection_limit=10"
+# Database connection string (MySQL)
+DATABASE_URL="mysql://user:pass@localhost:port/ai_exam?connection_limit=10"
+
+# NextAuth secrets for local development
 NEXTAUTH_SECRET="dev-secret"
 NEXTAUTH_URL="http://localhost:3000"
-AI_PROVIDER="openai"
+
+# AI provider configuration
+AI_PROVIDER="gemini"
 AI_MAX_CALLS_PER_DAY="500"
+AI_MODEL="gemini-2.5-flash"
+GEMINI_API_KEY="API_KEY"
 ```
 
 ## Setup
