@@ -1,4 +1,4 @@
-import { BookOpen, FileBarChart, GraduationCap } from "lucide-react";
+﻿import { BookOpen, FileBarChart, GraduationCap } from "lucide-react";
 import { authGuard } from "@/lib/auth-guard";
 import { Navbar } from "@/components/navbar";
 import { Sidebar } from "@/components/sidebar";
@@ -24,3 +24,4 @@ export default async function TeacherLayout({ children }: { children: React.Reac
     </div>
   );
 }
+

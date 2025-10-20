@@ -46,14 +46,16 @@ export default async function StudentExamsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between">
-        <div>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
           <h1 className="text-2xl font-semibold">ข้อสอบที่รอมอบหมาย</h1>
           <p className="text-sm text-muted-foreground">
             เริ่มทำข้อสอบจากรายการ Assignment ที่ครูส่งให้คุณ หากไม่มีรายการ แสดงว่ายังไม่ถูกมอบหมาย
           </p>
         </div>
-        <Badge variant="outline">นักเรียน: {user.name ?? user.email}</Badge>
+        <Badge className="self-start sm:self-auto" variant="outline">
+          นักเรียน: {user.name ?? user.email}
+        </Badge>
       </header>
 
       <StudentAssignmentList initialAssignments={serialized} />

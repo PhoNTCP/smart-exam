@@ -44,14 +44,16 @@ export default async function StudentAssignmentsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between">
-        <div>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
           <h1 className="text-2xl font-semibold">งานที่ได้รับ</h1>
           <p className="text-sm text-muted-foreground">
             ดูรายการข้อสอบที่ครูมอบหมายให้คุณ พร้อมเริ่มทำได้ทันที
           </p>
         </div>
-        <Badge variant="outline">นักเรียน: {user.name ?? user.email}</Badge>
+        <Badge className="self-start sm:self-auto" variant="outline">
+          นักเรียน: {user.name ?? user.email}
+        </Badge>
       </header>
 
       <StudentAssignmentList initialAssignments={serialized} />

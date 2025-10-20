@@ -33,12 +33,14 @@ export default async function StudentSubjectsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between">
-        <div>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
           <h1 className="text-2xl font-semibold">วิชาที่ลงทะเบียน</h1>
           <p className="text-sm text-muted-foreground">รายการวิชาทั้งหมดที่คุณได้รับการลงทะเบียน</p>
         </div>
-        <Badge variant="outline">นักเรียน: {user.name ?? user.email}</Badge>
+        <Badge className="self-start sm:self-auto" variant="outline">
+          นักเรียน: {user.name ?? user.email}
+        </Badge>
       </header>
 
       {subjects.length === 0 ? (

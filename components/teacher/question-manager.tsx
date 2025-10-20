@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -23,7 +23,6 @@ type QuestionRow = {
   updatedAt: string;
   difficulty: number | null;
   aiReason: string | null;
-  aiModel: string | null;
   choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
 };
 
@@ -259,13 +258,6 @@ export const QuestionManager = () => {
         },
       },
       {
-        header: "โมเดล (AI)",
-        accessorKey: "aiModel",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">{row.original.aiModel ?? "—"}</span>
-        ),
-      },
-      {
         header: "เหตุผล (AI)",
         accessorKey: "aiReason",
         cell: ({ row }) => {
@@ -477,7 +469,7 @@ export const QuestionManager = () => {
       </div>
 
       <div className="flex flex-col gap-3 rounded-md border p-4">
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Input
             placeholder="ค้นหา..."
             value={search}
@@ -541,7 +533,7 @@ export const QuestionManager = () => {
 
       <DataTable data={questions} columns={columns} />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           แสดง {rangeStart} - {rangeEnd} จากทั้งหมด {total} ข้อ
         </p>
@@ -584,9 +576,6 @@ export const QuestionManager = () => {
           {reasonPreview.question ? (
             <div className="space-y-2 text-sm text-muted-foreground">
               <p className="font-medium text-foreground">{reasonPreview.question.subject}</p>
-              <p className="text-xs text-muted-foreground">
-                โมเดล: <span className="font-medium text-foreground">{reasonPreview.question.aiModel ?? "ไม่ระบุ"}</span>
-              </p>
               <p className="whitespace-pre-wrap">{reasonPreview.question.aiReason}</p>
             </div>
           ) : (

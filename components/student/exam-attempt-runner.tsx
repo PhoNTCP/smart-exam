@@ -192,14 +192,16 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>{initial.examTitle}</CardTitle>
               <CardDescription>
                 วิชา {initial.subjectName} • ข้อที่ {answeredCount + 1} จาก {totalQuestions}
               </CardDescription>
             </div>
-            <Badge variant="outline">θ ปัจจุบัน: {theta.toFixed(2)}</Badge>
+            <Badge className="self-start sm:self-auto" variant="outline">
+              θ ปัจจุบัน: {theta.toFixed(2)}
+            </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -212,7 +214,10 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
             <p className="text-sm font-medium text-muted-foreground">ตัวเลือก</p>
             <div className="grid gap-3">
               {question.choices.map((choice) => (
-                <label key={choice.id} className="flex items-center gap-3 rounded-md border p-3 text-sm">
+                <label
+                  key={choice.id}
+                  className="flex flex-col gap-2 rounded-md border p-3 text-sm sm:flex-row sm:items-center sm:gap-3"
+                >
                   <input
                     type="radio"
                     name="choice"

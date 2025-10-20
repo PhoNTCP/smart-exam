@@ -8,14 +8,16 @@ import { cn } from "@/lib/utils";
 export const Sidebar = ({
   title,
   links,
+  className,
 }: {
   title: string;
   links: Array<{ href: string; label: string; icon?: React.ReactNode }>;
+  className?: string;
 }) => {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-60 flex-col gap-4 border-r bg-muted/30 p-6">
+    <aside className={cn("flex w-60 flex-col gap-4 border-r bg-muted/30 p-6", className)}>
       {/* Render section title */}
       <h2 className="text-lg font-semibold">{title}</h2>
       {/* Render navigation links */}

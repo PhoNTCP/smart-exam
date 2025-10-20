@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -215,7 +215,7 @@ export const SubjectManager = () => {
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle>วิชาที่คุณสอน</CardTitle>
             <CardDescription>สร้างและจัดการวิชาก่อนสร้างข้อสอบ</CardDescription>
