@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -57,6 +56,9 @@ type ExamRow = {
   createdAt: string;
   attemptCount: number;
   completedCount: number;
+  questionCount: number;
+  difficultyMin: number;
+  difficultyMax: number;
 };
 
 type AssignmentRow = {
@@ -68,6 +70,17 @@ type AssignmentRow = {
   createdAt: string;
   assignedCount: number;
   completedCount: number;
+  students: AssignmentStudentRow[];
+};
+
+type AssignmentStudentRow = {
+  studentId: string;
+  studentName: string | null;
+  studentEmail: string;
+  status: "ASSIGNED" | "IN_PROGRESS" | "COMPLETED";
+  attemptId: string | null;
+  score: number | null;
+  completedAt: string | null;
 };
 
 const levelLabel = (value: string) => {
@@ -86,7 +99,26 @@ const levelLabel = (value: string) => {
   }
 };
 
+const difficultyLevels = [1, 2, 3, 4, 5] as const;
+
+const DEFAULT_EXAM_FORM = {
+  title: "",
+  isAdaptive: true,
+  questionCount: 10,
+  difficultyMin: 1,
+  difficultyMax: 5,
+} satisfies ExamFormState;
+
 const formatDate = (iso: string) => new Date(iso).toLocaleString();
+
+const ASSIGNMENT_STATUS_META: Record<
+  AssignmentStudentRow["status"],
+  { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+> = {
+  ASSIGNED: { label: "ยังไม่เริ่ม", variant: "outline" },
+  IN_PROGRESS: { label: "กำลังทำ", variant: "secondary" },
+  COMPLETED: { label: "เสร็จสิ้น", variant: "default" },
+};
 
 type SubjectDetailProps = {
   subject: SubjectInfo;
@@ -99,6 +131,9 @@ type SubjectDetailProps = {
 type ExamFormState = {
   title: string;
   isAdaptive: boolean;
+  questionCount: number;
+  difficultyMin: number;
+  difficultyMax: number;
 };
 
 type AssignmentFormState = {
@@ -114,7 +149,6 @@ export const SubjectDetail = ({
   initialExams,
   initialAssignments,
 }: SubjectDetailProps) => {
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"overview" | "students" | "exams" | "assignments">("overview");
   const [students, setStudents] = useState<StudentRow[]>(initialStudents);
   const [exams, setExams] = useState<ExamRow[]>(initialExams);
@@ -124,7 +158,8 @@ export const SubjectDetail = ({
   const [enrollEmail, setEnrollEmail] = useState("");
   const [enrolling, setEnrolling] = useState(false);
   const [examDialogOpen, setExamDialogOpen] = useState(false);
-  const [examForm, setExamForm] = useState<ExamFormState>({ title: "", isAdaptive: true });
+  const [editingExam, setEditingExam] = useState<ExamRow | null>(null);
+  const [examForm, setExamForm] = useState<ExamFormState>({ ...DEFAULT_EXAM_FORM });
   const [examSubmitting, setExamSubmitting] = useState(false);
   const [assignmentSubmitting, setAssignmentSubmitting] = useState(false);
   const [assignmentForm, setAssignmentForm] = useState<AssignmentFormState>({
@@ -132,6 +167,8 @@ export const SubjectDetail = ({
     startAt: "",
     dueAt: "",
   });
+  const [assignmentDetailOpen, setAssignmentDetailOpen] = useState(false);
+  const [selectedAssignment, setSelectedAssignment] = useState<AssignmentRow | null>(null);
 
   const completionRate = useMemo(() => {
     if (summaryState.totalAttempts === 0) return "0%";
@@ -141,7 +178,7 @@ export const SubjectDetail = ({
 
   const handleEnroll = async () => {
     if (!enrollEmail) {
-      setFeedback({ type: "error", message: "กรุณาระบุอีเมลนักเรียน" });
+      setFeedback({ type: "error", message: "กรุณากรอกอีเมลนักเรียน" });
       return;
     }
     setEnrolling(true);
@@ -154,7 +191,7 @@ export const SubjectDetail = ({
       });
       const json = await response.json();
       if (!response.ok) {
-        throw new Error(json.message ?? "เพิ่มนักเรียนไม่สำเร็จ");
+        throw new Error(json.message ?? "ไม่สามารถลงทะเบียนได้ในขณะนี้");
       }
       const newStudent: StudentRow = {
         enrollmentId: json.data.id,
@@ -169,89 +206,16 @@ export const SubjectDetail = ({
         studentCount: prev.studentCount + 1,
       }));
       setEnrollEmail("");
-      setFeedback({ type: "success", message: "เพิ่มนักเรียนเรียบร้อย" });
+      setFeedback({ type: "success", message: "ลงทะเบียนนักเรียนสำเร็จ" });
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "เพิ่มนักเรียนไม่สำเร็จ" });
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถลงทะเบียนได้ในขณะนี้" });
     } finally {
       setEnrolling(false);
     }
   };
 
-  const handleRemoveStudent = async (userId: string) => {
-    setFeedback(null);
-    try {
-      const response = await fetch(`/api/subjects/${subject.id}/enrollments`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      const json = await response.json();
-      if (!response.ok) {
-        throw new Error(json.message ?? "ไม่สามารถลบนักเรียนได้");
-      }
-      setStudents((prev) => prev.filter((student) => student.userId !== userId));
-      setSummaryState((prev) => ({
-        ...prev,
-        studentCount: Math.max(prev.studentCount - 1, 0),
-      }));
-      setFeedback({ type: "success", message: "ลบนักเรียนออกจากวิชาแล้ว" });
-    } catch (error) {
-      console.error(error);
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถลบนักเรียนได้" });
-    }
-  };
-
-  const handleCreateExam = async () => {
-    if (!examForm.title.trim()) {
-      setFeedback({ type: "error", message: "กรุณาระบุชื่อข้อสอบ" });
-      return;
-    }
-    setExamSubmitting(true);
-    setFeedback(null);
-    try {
-      const response = await fetch("/api/exams", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: examForm.title.trim(),
-          subjectId: subject.id,
-          isAdaptive: examForm.isAdaptive,
-        }),
-      });
-      const json = await response.json();
-      if (!response.ok) {
-        throw new Error(json.message ?? "ไม่สามารถสร้างข้อสอบได้");
-      }
-      const newExam: ExamRow = {
-        id: json.data.id,
-        title: json.data.title,
-        isAdaptive: json.data.isAdaptive,
-        createdAt: json.data.createdAt,
-        attemptCount: json.data.attemptCount ?? 0,
-        completedCount: 0,
-      };
-      setExams((prev) => [newExam, ...prev]);
-      setAssignmentForm((prev) => ({
-        ...prev,
-        examId: prev.examId || newExam.id,
-      }));
-      setSummaryState((prev) => ({
-        ...prev,
-        examCount: prev.examCount + 1,
-      }));
-      setExamDialogOpen(false);
-      setExamForm({ title: "", isAdaptive: true });
-      setFeedback({ type: "success", message: "สร้างข้อสอบเรียบร้อย" });
-    } catch (error) {
-      console.error(error);
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถสร้างข้อสอบได้" });
-    } finally {
-      setExamSubmitting(false);
-    }
-  };
-
-  const handleDeleteExam = async (examId: string) => {
+    const handleDeleteExam = async (examId: string) => {
     setFeedback(null);
     try {
       const response = await fetch(`/api/exams/${examId}`, {
@@ -276,8 +240,7 @@ export const SubjectDetail = ({
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถลบข้อสอบได้" });
     }
   };
-
-  const handleToggleExamMode = async (exam: ExamRow) => {
+    const handleToggleExamMode = async (exam: ExamRow) => {
     setFeedback(null);
     try {
       const response = await fetch(`/api/exams/${exam.id}`, {
@@ -287,7 +250,7 @@ export const SubjectDetail = ({
       });
       const json = await response.json();
       if (!response.ok) {
-        throw new Error(json.message ?? "ไม่สามารถอัปเดตข้อสอบได้");
+        throw new Error(json.message ?? "ไม่สามารถเปลี่ยนโหมดข้อสอบได้");
       }
       setExams((prev) =>
         prev.map((item) =>
@@ -296,16 +259,195 @@ export const SubjectDetail = ({
             : item,
         ),
       );
-      setFeedback({ type: "success", message: "อัปเดตโหมดข้อสอบเรียบร้อย" });
+      setFeedback({ type: "success", message: "เปลี่ยนโหมดข้อสอบเรียบร้อย" });
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถอัปเดตข้อสอบได้" });
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถเปลี่ยนโหมดข้อสอบได้" });
     }
   };
 
-  const handleCreateAssignment = async () => {
+  const handleRemoveStudent = async (userId: string) => {
+    setFeedback(null);
+    try {
+      const response = await fetch(`/api/subjects/${subject.id}/enrollments`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json.message ?? "ไม่สามารถลบนักเรียนได้");
+      }
+      setStudents((prev) => prev.filter((student) => student.userId !== userId));
+      setSummaryState((prev) => ({
+        ...prev,
+        studentCount: Math.max(prev.studentCount - 1, 0),
+      }));
+      setFeedback({ type: "success", message: "ลบนักเรียนเรียบร้อย" });
+    } catch (error) {
+      console.error(error);
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถลบนักเรียนได้" });
+    }
+  };
+
+    const handleOpenCreateExam = () => {
+    setFeedback(null);
+    setEditingExam(null);
+    setExamForm({ ...DEFAULT_EXAM_FORM });
+    setExamDialogOpen(true);
+  };
+
+  const handleOpenEditExam = (exam: ExamRow) => {
+    setFeedback(null);
+    setEditingExam(exam);
+    setExamForm({
+      title: exam.title,
+      isAdaptive: exam.isAdaptive,
+      questionCount: exam.questionCount,
+      difficultyMin: exam.difficultyMin,
+      difficultyMax: exam.difficultyMax,
+    });
+    setExamDialogOpen(true);
+  };
+
+  const handleOpenAssignmentDetails = (assignment: AssignmentRow) => {
+    setSelectedAssignment(assignment);
+    setAssignmentDetailOpen(true);
+  };
+
+  const validateExamForm = () => {
+    if (!examForm.title.trim()) {
+      setFeedback({ type: "error", message: "กรุณากรอกชื่อข้อสอบ" });
+      return false;
+    }
+    if (!Number.isFinite(examForm.questionCount) || examForm.questionCount <= 0) {
+      setFeedback({ type: "error", message: "จำนวนข้อสอบต้องมากกว่า 0" });
+      return false;
+    }
+    if (examForm.difficultyMin > examForm.difficultyMax) {
+      setFeedback({ type: "error", message: "ช่วงความยากไม่ถูกต้อง" });
+      return false;
+    }
+    return true;
+  };
+
+  const handleCreateExam = async () => {
+    if (!validateExamForm()) {
+      return;
+    }
+    setExamSubmitting(true);
+    setFeedback(null);
+    try {
+      const response = await fetch("/api/exams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: examForm.title.trim(),
+          subjectId: subject.id,
+          isAdaptive: examForm.isAdaptive,
+          questionCount: examForm.questionCount,
+          difficultyMin: examForm.difficultyMin,
+          difficultyMax: examForm.difficultyMax,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json.message ?? "ไม่สามารถสร้างข้อสอบได้");
+      }
+      const newExam: ExamRow = {
+        id: json.data.id,
+        title: json.data.title,
+        isAdaptive: json.data.isAdaptive,
+        createdAt: json.data.createdAt,
+        attemptCount: json.data.attemptCount ?? 0,
+        completedCount: 0,
+        questionCount: json.data.questionCount ?? examForm.questionCount,
+        difficultyMin: json.data.difficultyMin ?? examForm.difficultyMin,
+        difficultyMax: json.data.difficultyMax ?? examForm.difficultyMax,
+      };
+
+      setExams((prev) => [newExam, ...prev]);
+      setAssignmentForm((prev) => ({
+        ...prev,
+        examId: prev.examId || newExam.id,
+      }));
+      setSummaryState((prev) => ({
+        ...prev,
+        examCount: prev.examCount + 1,
+      }));
+      setExamDialogOpen(false);
+      setEditingExam(null);
+      setExamForm({ ...DEFAULT_EXAM_FORM });
+      setFeedback({ type: "success", message: "สร้างข้อสอบเรียบร้อย" });
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "ไม่สามารถสร้างข้อสอบได้",
+      });
+    } finally {
+      setExamSubmitting(false);
+    }
+  };
+
+  const handleUpdateExam = async () => {
+    if (!editingExam) {
+      return;
+    }
+    if (!validateExamForm()) {
+      return;
+    }
+    setExamSubmitting(true);
+    setFeedback(null);
+    try {
+      const response = await fetch(`/api/exams/${editingExam.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: examForm.title.trim(),
+          isAdaptive: examForm.isAdaptive,
+          questionCount: examForm.questionCount,
+          difficultyMin: examForm.difficultyMin,
+          difficultyMax: examForm.difficultyMax,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json.message ?? "ไม่สามารถอัปเดตข้อสอบได้");
+      }
+      setExams((prev) =>
+        prev.map((item) =>
+          item.id === editingExam.id
+            ? {
+                ...item,
+                title: json.data?.title ?? examForm.title.trim(),
+                isAdaptive: json.data?.isAdaptive ?? examForm.isAdaptive,
+                questionCount: json.data?.questionCount ?? examForm.questionCount,
+                difficultyMin: json.data?.difficultyMin ?? examForm.difficultyMin,
+                difficultyMax: json.data?.difficultyMax ?? examForm.difficultyMax,
+                attemptCount: json.data?.attemptCount ?? item.attemptCount,
+                createdAt: json.data?.createdAt ?? item.createdAt,
+              }
+            : item,
+        ),
+      );
+      setExamDialogOpen(false);
+      setEditingExam(null);
+      setExamForm({ ...DEFAULT_EXAM_FORM });
+      setFeedback({ type: "success", message: "บันทึกการแก้ไขเรียบร้อย" });
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "ไม่สามารถอัปเดตข้อสอบได้",
+      });
+    } finally {
+      setExamSubmitting(false);
+    }
+  };
+const handleCreateAssignment = async () => {
     if (!assignmentForm.examId) {
-      setFeedback({ type: "error", message: "กรุณาเลือกข้อสอบก่อนมอบหมาย" });
+      setFeedback({ type: "error", message: "กรุณาเลือกข้อสอบก่อน" });
       return;
     }
     setAssignmentSubmitting(true);
@@ -329,7 +471,7 @@ export const SubjectDetail = ({
       });
       const json = await response.json();
       if (!response.ok) {
-        throw new Error(json.message ?? "ไม่สามารถมอบหมายข้อสอบได้");
+        throw new Error(json.message ?? "ไม่สามารถสร้างงานที่มอบหมายได้");
       }
 
       const newAssignment: AssignmentRow = {
@@ -341,6 +483,15 @@ export const SubjectDetail = ({
         createdAt: json.data.createdAt,
         assignedCount: json.data.assignedCount,
         completedCount: json.data.completedCount,
+        students: students.map((student) => ({
+          studentId: student.userId,
+          studentName: student.name,
+          studentEmail: student.email,
+          status: "ASSIGNED",
+          attemptId: null,
+          score: null,
+          completedAt: null,
+        })),
       };
 
       setAssignments((prev) => [newAssignment, ...prev]);
@@ -353,10 +504,10 @@ export const SubjectDetail = ({
         startAt: "",
         dueAt: "",
       }));
-      setFeedback({ type: "success", message: "มอบหมายข้อสอบเรียบร้อย" });
+      setFeedback({ type: "success", message: "สร้างงานที่มอบหมายสำเร็จ" });
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถมอบหมายข้อสอบได้" });
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถสร้างงานที่มอบหมายได้" });
     } finally {
       setAssignmentSubmitting(false);
     }
@@ -386,25 +537,25 @@ export const SubjectDetail = ({
           variant={activeTab === "overview" ? "default" : "outline"}
           onClick={() => setActiveTab("overview")}
         >
-          Overview
+          ภาพรวม
         </Button>
         <Button
           variant={activeTab === "students" ? "default" : "outline"}
           onClick={() => setActiveTab("students")}
         >
-          Students
+          นักเรียน
         </Button>
         <Button
           variant={activeTab === "exams" ? "default" : "outline"}
           onClick={() => setActiveTab("exams")}
         >
-          Exams
+          ข้อสอบ
         </Button>
         <Button
           variant={activeTab === "assignments" ? "default" : "outline"}
           onClick={() => setActiveTab("assignments")}
         >
-          Assignments
+          งานที่มอบหมาย
         </Button>
       </div>
 
@@ -412,8 +563,8 @@ export const SubjectDetail = ({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardHeader>
-              <CardTitle>จำนวนข้อสอบ</CardTitle>
-              <CardDescription>ข้อสอบทั้งหมดในวิชานี้</CardDescription>
+              <CardTitle>ข้อสอบทั้งหมด</CardTitle>
+              <CardDescription>จำนวนข้อสอบที่สร้างในรายวิชานี้</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-semibold">{summaryState.examCount}</p>
@@ -421,8 +572,8 @@ export const SubjectDetail = ({
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>จำนวนนักเรียน</CardTitle>
-              <CardDescription>นักเรียนที่ลงทะเบียน</CardDescription>
+              <CardTitle>นักเรียนทั้งหมด</CardTitle>
+              <CardDescription>จำนวนนักเรียนที่ลงทะเบียนในรายวิชานี้</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-semibold">{summaryState.studentCount}</p>
@@ -430,8 +581,8 @@ export const SubjectDetail = ({
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Attempt ทั้งหมด</CardTitle>
-              <CardDescription>การทำข้อสอบทั้งหมด</CardDescription>
+              <CardTitle>จำนวนครั้งที่ทำแบบทดสอบ</CardTitle>
+              <CardDescription>รวมจำนวนการทำข้อสอบทั้งหมด</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-semibold">{summaryState.totalAttempts}</p>
@@ -439,8 +590,8 @@ export const SubjectDetail = ({
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Completion Rate</CardTitle>
-              <CardDescription>สัดส่วนการทำข้อสอบจนเสร็จ</CardDescription>
+              <CardTitle>อัตราสำเร็จ</CardTitle>
+              <CardDescription>สัดส่วนการทำข้อสอบที่สำเร็จ</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-semibold">{completionRate}</p>
@@ -448,8 +599,8 @@ export const SubjectDetail = ({
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Assignments</CardTitle>
-              <CardDescription>งานที่มอบหมายให้นักเรียน</CardDescription>
+              <CardTitle>งานที่มอบหมาย</CardTitle>
+              <CardDescription>จำนวนงานที่มอบหมายให้กับนักเรียน</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-semibold">{summaryState.assignmentCount}</p>
@@ -461,13 +612,13 @@ export const SubjectDetail = ({
       {activeTab === "students" && (
         <Card>
           <CardHeader>
-            <CardTitle>นักเรียนในวิชา</CardTitle>
-            <CardDescription>เพิ่มนักเรียนด้วยอีเมล หรือจัดการนักเรียนที่ลงทะเบียนแล้ว</CardDescription>
+            <CardTitle>นักเรียนในรายวิชา</CardTitle>
+            <CardDescription>เพิ่ม/ลบนักเรียนด้วยอีเมล หรือจัดการรายชื่อนักเรียนในรายวิชา</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-end">
               <div className="flex-1 space-y-1">
-                <label className="text-sm font-medium">Enroll by email</label>
+                <label className="text-sm font-medium">เพิ่มด้วยอีเมล</label>
                 <Input
                   placeholder="student@example.com"
                   value={enrollEmail}
@@ -480,15 +631,15 @@ export const SubjectDetail = ({
             </div>
 
             {students.length === 0 ? (
-              <p className="text-sm text-muted-foreground">ยังไม่มีนักเรียนลงทะเบียนในวิชานี้</p>
+              <p className="text-sm text-muted-foreground">ยังไม่มีนักเรียนในรายวิชานี้</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 font-medium">นักเรียน</th>
+                      <th className="px-3 py-2 font-medium">ชื่อนักเรียน</th>
                       <th className="px-3 py-2 font-medium">อีเมล</th>
-                      <th className="px-3 py-2 font-medium">วันที่เพิ่ม</th>
+                      <th className="px-3 py-2 font-medium">วันที่เข้าร่วม</th>
                       <th className="px-3 py-2 font-medium">การจัดการ</th>
                     </tr>
                   </thead>
@@ -504,14 +655,14 @@ export const SubjectDetail = ({
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
-                                นำออก
+                                ลบ
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>ลบนักเรียนออกจากวิชา</AlertDialogTitle>
+                                <AlertDialogTitle>ยืนยันการลบนักเรียน</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  ต้องการลบ {student.name ?? student.email} ออกจากวิชานี้หรือไม่?
+                                  คุณต้องการลบ {student.name ?? student.email} ออกจากรายวิชานี้หรือไม่?
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
@@ -540,23 +691,36 @@ export const SubjectDetail = ({
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle>ข้อสอบในวิชานี้</CardTitle>
-              <CardDescription>สร้างข้อสอบใหม่ หรือจัดการข้อสอบที่มีอยู่</CardDescription>
+              <CardTitle>ข้อสอบทั้งหมด</CardTitle>
+              <CardDescription>จัดการและสร้างข้อสอบสำหรับ {subject.name}</CardDescription>
             </div>
-            <Dialog open={examDialogOpen} onOpenChange={setExamDialogOpen}>
+            <Dialog
+              open={examDialogOpen}
+              onOpenChange={(open) => {
+                setExamDialogOpen(open);
+                if (!open) {
+                  setEditingExam(null);
+                  setExamForm({ ...DEFAULT_EXAM_FORM });
+                }
+              }}
+            >
               <DialogTrigger asChild>
-                <Button onClick={() => setExamDialogOpen(true)}>Create exam</Button>
+                <Button onClick={handleOpenCreateExam}>สร้างข้อสอบ</Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>สร้างข้อสอบใหม่</DialogTitle>
-                  <DialogDescription>ข้อสอบจะถูกผูกกับวิชา {subject.name}</DialogDescription>
+                  <DialogTitle>{editingExam ? "แก้ไขข้อมูลข้อสอบ" : "สร้างข้อสอบใหม่"}</DialogTitle>
+                  <DialogDescription>
+                    {editingExam
+                      ? `ปรับปรุงรายละเอียดข้อสอบ ${editingExam.title}`
+                      : `ตั้งค่ารายละเอียดข้อสอบสำหรับ ${subject.name}`}
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 py-2">
                   <div className="space-y-1">
                     <label className="text-sm font-medium">ชื่อข้อสอบ</label>
                     <Input
-                      placeholder="เช่น แบบทดสอบกลางภาค"
+                      placeholder="เช่น แบบทดสอบก่อนเรียน บทที่ 1"
                       value={examForm.title}
                       onChange={(event) => setExamForm((prev) => ({ ...prev, title: event.target.value }))}
                     />
@@ -574,21 +738,87 @@ export const SubjectDetail = ({
                       <option value="standard">Standard</option>
                     </select>
                   </div>
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={() => setExamDialogOpen(false)} disabled={examSubmitting}>
-                    ยกเลิก
-                  </Button>
-                  <Button onClick={handleCreateExam} disabled={examSubmitting}>
-                    {examSubmitting ? "กำลังสร้าง..." : "สร้างข้อสอบ"}
-                  </Button>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">จำนวนข้อสอบ</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={examForm.questionCount}
+                        onChange={(event) =>
+                          setExamForm((prev) => {
+                            const value = Number(event.target.value);
+                            return { ...prev, questionCount: Number.isNaN(value) ? prev.questionCount : value };
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">ความยากขั้นต่ำ</label>
+                      <select
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
+                        value={examForm.difficultyMin}
+                        onChange={(event) =>
+                          setExamForm((prev) => ({
+                            ...prev,
+                            difficultyMin: Number(event.target.value),
+                          }))
+                        }
+                        disabled={!examForm.isAdaptive}
+                      >
+                        {difficultyLevels.map((level) => (
+                          <option key={level} value={level}>
+                            ระดับ {level}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">ความยากสูงสุด</label>
+                      <select
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
+                        value={examForm.difficultyMax}
+                        onChange={(event) =>
+                          setExamForm((prev) => ({
+                            ...prev,
+                            difficultyMax: Number(event.target.value),
+                          }))
+                        }
+                        disabled={!examForm.isAdaptive}
+                      >
+                        {difficultyLevels.map((level) => (
+                          <option key={level} value={level}>
+                            ระดับ {level}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="outline" onClick={() => setExamDialogOpen(false)} disabled={examSubmitting}>
+                      ยกเลิก
+                    </Button>
+                    <Button
+                      onClick={editingExam ? handleUpdateExam : handleCreateExam}
+                      disabled={examSubmitting}
+                    >
+                      {examSubmitting
+                        ? editingExam
+                          ? "กำลังบันทึก..."
+                          : "กำลังสร้าง..."
+                        : editingExam
+                          ? "บันทึกการแก้ไข"
+                          : "สร้างข้อสอบ"}
+                    </Button>
+                  </div>
                 </div>
               </DialogContent>
             </Dialog>
           </CardHeader>
           <CardContent className="space-y-4">
             {exams.length === 0 ? (
-              <p className="text-sm text-muted-foreground">ยังไม่มีข้อสอบในวิชานี้</p>
+              <p className="text-sm text-muted-foreground">ยังไม่มีข้อสอบ</p>
             ) : (
               <div className="space-y-3">
                 {exams.map((exam) => (
@@ -603,6 +833,9 @@ export const SubjectDetail = ({
                         <Badge variant={exam.isAdaptive ? "default" : "secondary"} className="mt-2">
                           {exam.isAdaptive ? "Adaptive" : "Standard"}
                         </Badge>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          ข้อสอบ {exam.questionCount} ข้อ • ความยาก {exam.difficultyMin}-{exam.difficultyMax}
+                        </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
@@ -615,9 +848,9 @@ export const SubjectDetail = ({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => router.push(`/teacher/questions`)}
+                          onClick={() => handleOpenEditExam(exam)}
                         >
-                          จัดการข้อสอบ
+                          แก้ไขข้อสอบ
                         </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -629,7 +862,7 @@ export const SubjectDetail = ({
                             <AlertDialogHeader>
                               <AlertDialogTitle>ยืนยันการลบข้อสอบ</AlertDialogTitle>
                               <AlertDialogDescription>
-                                เมื่อยืนยัน ข้อสอบและ attempt ที่เกี่ยวข้องจะถูกลบทั้งหมด
+                                การลบข้อสอบจะลบสถิติ attempt ทั้งหมดของข้อสอบนี้
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -656,13 +889,13 @@ export const SubjectDetail = ({
       {activeTab === "assignments" && (
         <Card>
           <CardHeader>
-            <CardTitle>Assignments</CardTitle>
-            <CardDescription>มอบหมายข้อสอบให้กับนักเรียนในวิชานี้</CardDescription>
+            <CardTitle>งานที่มอบหมาย</CardTitle>
+            <CardDescription>สร้างและจัดการการมอบหมายข้อสอบให้กับนักเรียน</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {exams.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                ยังไม่มีข้อสอบในวิชานี้ สร้างข้อสอบก่อนจึงจะมอบหมายได้
+                ยังไม่มีข้อสอบ โปรดสร้างข้อสอบก่อน
               </p>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
@@ -684,7 +917,7 @@ export const SubjectDetail = ({
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">วันเวลาเริ่มต้น (ไม่บังคับ)</label>
+                  <label className="text-sm font-medium">วันเวลาเริ่ม (ไม่บังคับ)</label>
                   <input
                     type="datetime-local"
                     className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
@@ -695,7 +928,7 @@ export const SubjectDetail = ({
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">กำหนดส่ง (ไม่บังคับ)</label>
+                  <label className="text-sm font-medium">วันเวลาสิ้นสุด (ไม่บังคับ)</label>
                   <input
                     type="datetime-local"
                     className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
@@ -707,7 +940,7 @@ export const SubjectDetail = ({
                 </div>
                 <div className="flex items-end">
                   <Button onClick={handleCreateAssignment} disabled={assignmentSubmitting}>
-                    {assignmentSubmitting ? "กำลังมอบหมาย..." : "มอบหมายข้อสอบ"}
+                    {assignmentSubmitting ? "กำลังสร้าง..." : "สร้างงานที่มอบหมาย"}
                   </Button>
                 </div>
               </div>
@@ -715,16 +948,17 @@ export const SubjectDetail = ({
 
             <div className="overflow-x-auto">
               {assignments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">ยังไม่มีการมอบหมายข้อสอบในวิชานี้</p>
+                <p className="text-sm text-muted-foreground">ยังไม่มีงานที่มอบหมาย</p>
               ) : (
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2 font-medium">ข้อสอบ</th>
                       <th className="px-3 py-2 font-medium">เริ่ม</th>
-                      <th className="px-3 py-2 font-medium">กำหนดส่ง</th>
-                      <th className="px-3 py-2 font-medium">มอบหมาย</th>
-                      <th className="px-3 py-2 font-medium">เสร็จสิ้น</th>
+                      <th className="px-3 py-2 font-medium">สิ้นสุด</th>
+                      <th className="px-3 py-2 font-medium">มอบหมายแล้ว</th>
+                      <th className="px-3 py-2 font-medium">ทำเสร็จแล้ว</th>
+                      <th className="px-3 py-2 font-medium">คะแนน</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -739,6 +973,15 @@ export const SubjectDetail = ({
                         </td>
                         <td className="px-3 py-2">{assignment.assignedCount}</td>
                         <td className="px-3 py-2">{assignment.completedCount}</td>
+                        <td className="px-3 py-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenAssignmentDetails(assignment)}
+                          >
+                            ดูรายละเอียด
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -748,6 +991,76 @@ export const SubjectDetail = ({
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={assignmentDetailOpen}
+        onOpenChange={(open) => {
+          setAssignmentDetailOpen(open);
+          if (!open) {
+            setSelectedAssignment(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              รายละเอียดคะแนน
+              {selectedAssignment ? ` - ${selectedAssignment.examTitle}` : ""}
+            </DialogTitle>
+            <DialogDescription>
+              ตรวจสอบสถานะและคะแนนของนักเรียนที่ได้รับมอบหมายงานสอบนี้
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAssignment ? (
+            selectedAssignment.students.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                ยังไม่มีนักเรียนในงานที่มอบหมายนี้
+              </p>
+            ) : (
+              <div className="max-h-[360px] overflow-y-auto rounded-md border">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 border-b bg-muted/60 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">นักเรียน</th>
+                      <th className="px-3 py-2 text-left font-medium">สถานะ</th>
+                      <th className="px-3 py-2 text-left font-medium">คะแนน</th>
+                      <th className="px-3 py-2 text-left font-medium">เสร็จสิ้นเมื่อ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedAssignment.students.map((student) => {
+                      const meta = ASSIGNMENT_STATUS_META[student.status];
+                      return (
+                        <tr key={student.studentId} className="border-b last:border-0">
+                          <td className="px-3 py-2">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground">
+                                {student.studentName ?? student.studentEmail}
+                              </span>
+                              <span className="text-xs text-muted-foreground">{student.studentEmail}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <Badge variant={meta.variant}>{meta.label}</Badge>
+                          </td>
+                          <td className="px-3 py-2">
+                            {student.score != null ? student.score : "-"}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {student.completedAt ? formatDate(student.completedAt) : "-"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
+
+

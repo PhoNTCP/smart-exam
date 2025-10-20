@@ -1,55 +1,62 @@
 import { prisma } from "@/lib/prisma";
 import { authGuard } from "@/lib/auth-guard";
-import { AdaptiveExamList } from "@/components/student/exam-list";
+import { StudentAssignmentList } from "@/components/student/assignment-list";
 import { Badge } from "@/components/ui/badge";
 
 export default async function StudentExamsPage() {
   const user = await authGuard("student");
 
-  const memberships = await prisma.subjectEnrollment.findMany({
-    where: { userId: user.id },
-    select: { subjectId: true },
-  });
-
-  const subjectIds = memberships.map((membership) => membership.subjectId);
-
-  const exams = subjectIds.length
-    ? await prisma.exam.findMany({
-        where: { isAdaptive: true, subjectId: { in: subjectIds } },
+  const assignments = await prisma.studentExam.findMany({
+    where: { studentId: user.id },
+    include: {
+      assignment: {
         include: {
-          subjectRef: {
+          exam: {
             select: {
+              id: true,
+              title: true,
+            },
+          },
+          subject: {
+            select: {
+              id: true,
               name: true,
               code: true,
             },
           },
         },
-        orderBy: { createdAt: "desc" },
-      })
-    : [];
+      },
+    },
+    orderBy: { assignedAt: "desc" },
+  });
 
-  const serialized = exams.map((exam) => ({
-    id: exam.id,
-    title: exam.title,
-    subjectName: exam.subjectRef?.name ?? "ไม่ระบุ",
-    subjectCode: exam.subjectRef?.code ?? "",
-    isAdaptive: exam.isAdaptive,
-    createdAt: exam.createdAt.toISOString(),
+  const outstanding = assignments.filter((link) => link.status !== "COMPLETED");
+
+  const serialized = outstanding.map((link) => ({
+    id: link.id,
+    examTitle: link.assignment.exam.title,
+    subjectName: link.assignment.subject.name,
+    subjectCode: link.assignment.subject.code,
+    status: link.status,
+    assignedAt: link.assignedAt.toISOString(),
+    startAt: link.assignment.startAt ? link.assignment.startAt.toISOString() : null,
+    dueAt: link.assignment.dueAt ? link.assignment.dueAt.toISOString() : null,
+    attemptId: link.attemptId,
   }));
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">ทำข้อสอบแบบปรับระดับ</h1>
+          <h1 className="text-2xl font-semibold">ข้อสอบที่รอมอบหมาย</h1>
           <p className="text-sm text-muted-foreground">
-            เลือกวิชาเพื่อเริ่มทำข้อสอบ Adaptive (10 ข้อ, ปรับระดับตามความสามารถ)
+            เริ่มทำข้อสอบจากรายการ Assignment ที่ครูส่งให้คุณ หากไม่มีรายการ แสดงว่ายังไม่ถูกมอบหมาย
           </p>
         </div>
-        <Badge variant="outline">ยินดีต้อนรับ, {user.name ?? user.email}</Badge>
+        <Badge variant="outline">นักเรียน: {user.name ?? user.email}</Badge>
       </header>
 
-      <AdaptiveExamList exams={serialized} />
+      <StudentAssignmentList initialAssignments={serialized} />
     </div>
   );
 }

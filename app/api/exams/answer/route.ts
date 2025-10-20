@@ -2,12 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import {
-  ADAPTIVE_TOTAL,
-  formatAttemptSummary,
-  recordAnswer,
-  toThetaNumber,
-} from "@/lib/services/adaptive-engine";
+import { formatAttemptSummary, recordAnswer, toThetaNumber } from "@/lib/services/adaptive-engine";
 
 const bodySchema = z.object({
   attemptId: z.string().cuid(),
@@ -48,7 +43,7 @@ export async function POST(request: Request) {
           theta: toThetaNumber(result.attempt.thetaEnd),
         },
         answeredCount: result.answeredCount,
-        total: ADAPTIVE_TOTAL,
+        total: result.totalQuestions,
         isCorrect: result.isCorrect,
       });
     }
@@ -57,7 +52,7 @@ export async function POST(request: Request) {
       status: "in-progress",
       question: result.question,
       answeredCount: result.answeredCount,
-      total: ADAPTIVE_TOTAL,
+      total: result.totalQuestions,
       theta: result.thetaAfter,
       score: result.attempt?.score ?? 0,
       isCorrect: result.isCorrect,

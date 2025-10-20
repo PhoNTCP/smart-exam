@@ -1,12 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { authGuard } from "@/lib/auth-guard";
-import {
-  ADAPTIVE_TOTAL,
-  ensureCurrentQuestion,
-  finishAttempt,
-  formatAttemptSummary,
-  toThetaNumber,
-} from "@/lib/services/adaptive-engine";
+import { ensureCurrentQuestion, finishAttempt, formatAttemptSummary, toThetaNumber } from "@/lib/services/adaptive-engine";
 import { ExamAttemptRunner } from "@/components/student/exam-attempt-runner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -91,7 +85,7 @@ export default async function StudentAttemptPage({ params }: AttemptPageProps) {
         subjectCode: examInfo.subjectRef.code,
         question: assignment.question,
         answeredCount: assignment.answeredCount,
-        total: ADAPTIVE_TOTAL,
+        total: assignment.totalQuestions,
         theta,
         score: attempt.score,
       }}

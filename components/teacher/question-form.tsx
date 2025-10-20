@@ -27,6 +27,41 @@ const createDefaultChoices = () =>
     order: index,
   }));
 
+const gradeOptions = [
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "M1",
+  "M2",
+  "M3",
+  "M4",
+  "M5",
+  "M6",
+  "U1",
+  "U2",
+  "U3",
+  "U4",
+  "U5",
+  "U6",
+  "UNSPECIFIED",
+] as const;
+
+const gradeLabel = (value: (typeof gradeOptions)[number]) => {
+  switch (value[0]) {
+    case "P":
+      return `ประถม ${value.slice(1)}`;
+    case "M":
+      return `มัธยม ${value.slice(1)}`;
+    case "U":
+      return `มหาวิทยาลัย ปี ${value.slice(1)}`;
+    default:
+      return "ไม่ระบุ";
+  }
+};
+
 export const QuestionForm = ({ initialValues, submitting, onSubmit }: QuestionFormProps) => {
   const [subjectOptions, setSubjectOptions] = useState<Array<{ id: string; name: string; code: string }>>([]);
 
@@ -145,7 +180,20 @@ export const QuestionForm = ({ initialValues, submitting, onSubmit }: QuestionFo
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
           ระดับชั้น
-          <Input placeholder="เช่น Grade 10" {...form.register("gradeLevel")} />
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
+            value={form.watch("gradeLevel")}
+            onChange={(event) =>
+              form.setValue("gradeLevel", event.target.value, { shouldDirty: true, shouldValidate: true })
+            }
+          >
+            <option value="">เลือกระดับชั้น</option>
+            {gradeOptions.map((option) => (
+              <option key={option} value={option}>
+                {gradeLabel(option)}
+              </option>
+            ))}
+          </select>
           {errors.gradeLevel && (
             <span className="text-xs text-destructive">{errors.gradeLevel.message}</span>
           )}

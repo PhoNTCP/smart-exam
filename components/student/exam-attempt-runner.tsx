@@ -45,6 +45,7 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
   const [theta, setTheta] = useState(initial.theta);
   const [score, setScore] = useState(initial.score);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
+  const [totalQuestions, setTotalQuestions] = useState(initial.total);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [hintVisible, setHintVisible] = useState(false);
   const [pending, setPending] = useState(false);
@@ -75,6 +76,10 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
         return;
       }
 
+      if (typeof json.total === "number") {
+        setTotalQuestions(json.total);
+      }
+
       if (currentQuestion) {
         if (json.isCorrect) {
           setLastExplanation(null);
@@ -85,6 +90,12 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
 
       if (json.status === "completed") {
         setSummary(json.summary);
+      if (json.summary?.total) {
+        setTotalQuestions(json.summary.total);
+      }
+        if (json.summary?.total) {
+          setTotalQuestions(json.summary.total);
+        }
         setQuestion(null);
         setAnsweredCount(json.answeredCount ?? answeredCount + 1);
         setFeedback({
@@ -127,6 +138,9 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
         return;
       }
       setSummary(json.summary);
+      if (json.summary?.total) {
+        setTotalQuestions(json.summary.total);
+      }
       setQuestion(null);
     } catch (error) {
       console.error(error);
@@ -182,7 +196,7 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
             <div>
               <CardTitle>{initial.examTitle}</CardTitle>
               <CardDescription>
-                วิชา {initial.subjectName} • ข้อที่ {answeredCount + 1} จาก {initial.total}
+                วิชา {initial.subjectName} • ข้อที่ {answeredCount + 1} จาก {totalQuestions}
               </CardDescription>
             </div>
             <Badge variant="outline">θ ปัจจุบัน: {theta.toFixed(2)}</Badge>

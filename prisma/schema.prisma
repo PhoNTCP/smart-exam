@@ -125,6 +125,9 @@ model Exam {
   subjectRef  Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   /// Toggle for adaptive exam logic
   isAdaptive  Boolean      @default(false)
+  questionCount Int        @default(10)
+  difficultyMin Int        @default(1)
+  difficultyMax Int        @default(5)
   createdAt   DateTime     @default(now())
 
   createdById String

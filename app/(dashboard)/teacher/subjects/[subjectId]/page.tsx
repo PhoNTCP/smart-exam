@@ -54,7 +54,22 @@ export default async function TeacherSubjectDetailPage({ params }: PageParams) {
             },
           },
           studentLinks: {
-            select: { status: true },
+            include: {
+              student: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+              attempt: {
+                select: {
+                  id: true,
+                  score: true,
+                  finishedAt: true,
+                },
+              },
+            },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -105,6 +120,9 @@ export default async function TeacherSubjectDetailPage({ params }: PageParams) {
     createdAt: exam.createdAt.toISOString(),
     attemptCount: exam.attempts.length,
     completedCount: exam.attempts.filter((attempt: Attempt) => Boolean(attempt.finishedAt)).length,
+    questionCount: exam.questionCount,
+    difficultyMin: exam.difficultyMin,
+    difficultyMax: exam.difficultyMax,
   }));
 
   const assignments = subject.assignments.map((assignment: Assignment) => ({
@@ -116,6 +134,15 @@ export default async function TeacherSubjectDetailPage({ params }: PageParams) {
     createdAt: assignment.createdAt.toISOString(),
     assignedCount: assignment.studentLinks.length,
     completedCount: assignment.studentLinks.filter((link: StudentLink) => link.status === "COMPLETED").length,
+    students: assignment.studentLinks.map((link: StudentLink) => ({
+      studentId: link.student.id,
+      studentName: link.student.name,
+      studentEmail: link.student.email,
+      status: link.status,
+      attemptId: link.attempt?.id ?? null,
+      score: link.attempt?.score ?? null,
+      completedAt: link.attempt?.finishedAt ? link.attempt.finishedAt.toISOString() : null,
+    })),
   }));
 
   const subjectInfo = {

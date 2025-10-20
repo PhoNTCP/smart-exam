@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureCurrentQuestion, ADAPTIVE_TOTAL, toThetaNumber } from "@/lib/services/adaptive-engine";
+import { ensureCurrentQuestion, toThetaNumber } from "@/lib/services/adaptive-engine";
 
 const bodySchema = z.object({
   examId: z.string().cuid(),
@@ -24,6 +24,9 @@ export async function POST(request: Request) {
       select: {
         id: true,
         title: true,
+        questionCount: true,
+        difficultyMin: true,
+        difficultyMax: true,
         subjectRef: {
           select: {
             id: true,
@@ -67,6 +70,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "คุณยังไม่ได้ลงทะเบียนในวิชานี้" }, { status: 403 });
     }
 
+    const assigned = await prisma.studentExam.findFirst({
+      where: {
+        studentId: session.user.id,
+        assignment: {
+          examId: exam.id,
+        },
+      },
+      select: { id: true },
+    });
+    if (!assigned) {
+      return NextResponse.json({ message: "ข้อสอบนี้ยังไม่ได้มอบหมายให้คุณ" }, { status: 403 });
+    }
+
     const existing = await prisma.examAttempt.findFirst({
       where: {
         examId,
@@ -96,7 +112,7 @@ export async function POST(request: Request) {
           },
           summary: {
             answered: resume.answeredCount,
-            total: ADAPTIVE_TOTAL,
+            total: resume.totalQuestions,
             theta: thetaResume,
             score: attemptSnapshot.score,
           },
@@ -114,7 +130,7 @@ export async function POST(request: Request) {
         },
         question: resume.question,
         answeredCount: resume.answeredCount,
-        total: ADAPTIVE_TOTAL,
+        total: resume.totalQuestions,
         theta: thetaResume,
         score: attemptSnapshot.score,
       });
@@ -143,7 +159,7 @@ export async function POST(request: Request) {
           status: "completed",
           summary: {
             score: 0,
-            total: ADAPTIVE_TOTAL,
+            total: assignment.totalQuestions,
             answered: assignment.answeredCount,
             theta: initialTheta,
           },
@@ -163,7 +179,7 @@ export async function POST(request: Request) {
       question: assignment.question,
       theta: toThetaNumber(attempt.thetaEnd),
       answeredCount: assignment.answeredCount,
-      total: ADAPTIVE_TOTAL,
+      total: assignment.totalQuestions,
       score: attempt.score,
     });
   } catch (error) {

@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureCurrentQuestion, ADAPTIVE_TOTAL, toThetaNumber } from "@/lib/services/adaptive-engine";
+import { ensureCurrentQuestion, toThetaNumber } from "@/lib/services/adaptive-engine";
 
 const bodySchema = z.object({
   studentExamId: z.string().cuid(),
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
         status: "completed",
         summary: {
           answered: next.answeredCount,
-          total: ADAPTIVE_TOTAL,
+          total: next.totalQuestions,
           theta: toThetaNumber(next.attempt.thetaEnd),
           score: next.attempt.score,
         },
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
       question: next.question,
       theta: toThetaNumber(next.attempt.thetaEnd ?? next.attempt.thetaStart),
       answeredCount: next.answeredCount,
-      total: ADAPTIVE_TOTAL,
+      total: next.totalQuestions,
       score: next.attempt.score,
     });
   } catch (error) {

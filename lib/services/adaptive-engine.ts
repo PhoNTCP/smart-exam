@@ -1,7 +1,7 @@
 import { Prisma, Question } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-const TOTAL_QUESTIONS = 10;
+const DEFAULT_TOTAL_QUESTIONS = 10;
 
 const clampTheta = (value: number) => Number(Math.min(1, Math.max(0, value)).toFixed(2));
 
@@ -42,6 +42,18 @@ const serializeQuestion = (
 
 type SerializedQuestion = ReturnType<typeof serializeQuestion>;
 type AttemptContext = Awaited<ReturnType<typeof fetchAttemptContext>>;
+
+const getTotalQuestionsForExam = (exam: NonNullable<AttemptContext>["exam"]) =>
+  Math.max(1, exam?.questionCount ?? DEFAULT_TOTAL_QUESTIONS);
+
+const getDifficultyBounds = (exam: NonNullable<AttemptContext>["exam"]) => {
+  const min = exam?.difficultyMin ?? 1;
+  const max = exam?.difficultyMax ?? 5;
+  if (min > max) {
+    return { min: max, max: min };
+  }
+  return { min, max };
+};
 
 const fetchAttemptContext = async (
   tx: Prisma.TransactionClient,
@@ -103,7 +115,18 @@ const selectNextQuestion = async (
     return null;
   }
 
-  const ranked = candidates
+  const { min: minDifficulty, max: maxDifficulty } = getDifficultyBounds(context.exam);
+  const pool = candidates.filter((question) => {
+    const diff = question.aiScores[0]?.difficulty;
+    if (diff == null) {
+      return true;
+    }
+    return diff >= minDifficulty && diff <= maxDifficulty;
+  });
+
+  const rankedSource = pool.length > 0 ? pool : candidates;
+
+  const ranked = rankedSource
     .map((question) => ({
       question,
       diff: Math.abs((question.aiScores[0]?.difficulty ?? 3) - targetDifficulty),
@@ -119,12 +142,14 @@ type EnsureResult =
       attempt: NonNullable<AttemptContext>;
       question: null;
       answeredCount: number;
+      totalQuestions: number;
     }
   | {
       status: "in-progress";
       attempt: NonNullable<AttemptContext>;
       question: SerializedQuestion;
       answeredCount: number;
+      totalQuestions: number;
     };
 
 export const ensureCurrentQuestion = async (
@@ -137,8 +162,9 @@ export const ensureCurrentQuestion = async (
       return null;
     }
 
+    const totalQuestions = getTotalQuestionsForExam(attempt.exam);
     const answeredCount = attempt.answers.length;
-    const finished = Boolean(attempt.finishedAt) || answeredCount >= TOTAL_QUESTIONS;
+    const finished = Boolean(attempt.finishedAt) || answeredCount >= totalQuestions;
 
     if (finished) {
       const completedAttempt =
@@ -168,11 +194,13 @@ export const ensureCurrentQuestion = async (
               },
             });
 
+      const completedTotal = getTotalQuestionsForExam(completedAttempt.exam);
       return {
         status: "completed",
         attempt: completedAttempt,
         question: null,
         answeredCount,
+        totalQuestions: completedTotal,
       };
     }
 
@@ -182,6 +210,7 @@ export const ensureCurrentQuestion = async (
         attempt,
         question: serializeQuestion(attempt.currentQuestion),
         answeredCount,
+        totalQuestions,
       };
     }
 
@@ -216,6 +245,7 @@ export const ensureCurrentQuestion = async (
         attempt: completedAttempt,
         question: null,
         answeredCount,
+        totalQuestions: getTotalQuestionsForExam(completedAttempt.exam),
       };
     }
 
@@ -236,6 +266,7 @@ export const ensureCurrentQuestion = async (
       attempt: refreshed,
       question: serializeQuestion(refreshed.currentQuestion),
       answeredCount: refreshed.answers.length,
+      totalQuestions: getTotalQuestionsForExam(refreshed.exam),
     };
   });
 };
@@ -263,6 +294,7 @@ export const finishAttempt = async (attemptId: string, userId: string) => {
       const existing = await tx.examAttempt.findFirst({
         where: { id: attempt.id },
         include: {
+          exam: true,
           answers: true,
         },
       });
@@ -279,6 +311,7 @@ export const finishAttempt = async (attemptId: string, userId: string) => {
         currentQuestionId: null,
       },
       include: {
+        exam: true,
         answers: true,
       },
     });
@@ -295,6 +328,7 @@ type RecordAnswerResult =
       answeredCount: number;
       thetaAfter: number;
       isCorrect: boolean;
+      totalQuestions: number;
     }
   | {
       status: "in-progress";
@@ -303,6 +337,7 @@ type RecordAnswerResult =
       answeredCount: number;
       thetaAfter: number;
       isCorrect: boolean;
+      totalQuestions: number;
     };
 
 export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnswerResult> => {
@@ -355,8 +390,9 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
       throw new Error("ATTEMPT_NOT_FOUND");
     }
 
+    const totalQuestions = getTotalQuestionsForExam(updated.exam);
     const answeredCount = updated.answers.length;
-    const finished = answeredCount >= TOTAL_QUESTIONS;
+    const finished = answeredCount >= totalQuestions;
 
     if (finished) {
       const finishedAttempt = await tx.examAttempt.update({
@@ -366,6 +402,7 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
           currentQuestionId: null,
         },
         include: {
+          exam: true,
           answers: true,
         },
       });
@@ -377,6 +414,7 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
         answeredCount,
         thetaAfter,
         isCorrect,
+        totalQuestions: getTotalQuestionsForExam(finishedAttempt.exam),
       };
     }
 
@@ -389,6 +427,7 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
           currentQuestionId: null,
         },
         include: {
+          exam: true,
           answers: true,
         },
       });
@@ -400,6 +439,7 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
         answeredCount,
         thetaAfter,
         isCorrect,
+        totalQuestions: getTotalQuestionsForExam(finishedAttempt.exam),
       };
     }
 
@@ -422,6 +462,7 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
       answeredCount: refreshed.answers.length,
       thetaAfter,
       isCorrect,
+      totalQuestions: getTotalQuestionsForExam(refreshed.exam),
     };
   });
 };
@@ -429,14 +470,14 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
 export const formatAttemptSummary = (attempt: Awaited<ReturnType<typeof finishAttempt>>) => ({
   attemptId: attempt.id,
   score: attempt.score,
-  total: TOTAL_QUESTIONS,
+  total: getTotalQuestionsForExam(attempt.exam),
   thetaStart: Number(attempt.thetaStart),
   thetaEnd: Number(attempt.thetaEnd),
   answered: attempt.answers.length,
   finishedAt: attempt.finishedAt ?? new Date(),
 });
 
-export const ADAPTIVE_TOTAL = TOTAL_QUESTIONS;
+export const ADAPTIVE_TOTAL = DEFAULT_TOTAL_QUESTIONS;
 export const toThetaNumber = (value: Prisma.Decimal | number) => Number(value);
 
 export { difficultyFromTheta };

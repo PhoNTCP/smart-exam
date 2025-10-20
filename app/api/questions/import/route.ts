@@ -69,12 +69,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "ไม่พบข้อมูลในไฟล์" }, { status: 400 });
     }
 
-    const rows = utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+    const rows = utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: "",
+      raw: false,
+      blankrows: false,
+    });
     if (rows.length === 0) {
       return NextResponse.json({ message: "ไฟล์ไม่มีข้อมูล" }, { status: 400 });
     }
 
-    const results: Array<{ row: number; status: "success" | "error"; message?: string }> = [];
+    const results: Array<{
+      row: number;
+      status: "success" | "error";
+      message?: string;
+      raw?: Record<string, unknown>;
+      errors?: string[];
+    }> = [];
     let successCount = 0;
 
     for (let index = 0; index < rows.length; index += 1) {
@@ -97,6 +107,8 @@ export async function POST(request: Request) {
           row: index + 2,
           status: "error",
           message: "ข้อมูลไม่ครบถ้วน",
+          raw,
+          errors: parsedRow.error.issues.map((issue) => issue.message),
         });
         continue;
       }
@@ -108,6 +120,7 @@ export async function POST(request: Request) {
           row: index + 2,
           status: "error",
           message: "ระบุคำตอบที่ถูกต้องไม่ถูกต้อง (ใช้ A-D)",
+          raw,
         });
         continue;
       }
@@ -132,6 +145,8 @@ export async function POST(request: Request) {
           row: index + 2,
           status: "error",
           message: "ข้อมูลไม่ผ่านการตรวจสอบ",
+          raw,
+          errors: validated.error.issues.map((issue) => issue.message),
         });
         continue;
       }
@@ -162,6 +177,7 @@ export async function POST(request: Request) {
           row: index + 2,
           status: "error",
           message: "บันทึกลงฐานข้อมูลไม่สำเร็จ",
+          raw,
         });
       }
     }

@@ -49,6 +49,21 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const handleStart = async (assignmentId: string) => {
+    const target = assignments.find((item) => item.id === assignmentId);
+    if (!target) {
+      return;
+    }
+
+    const startAtTime =
+      target.startAt && !Number.isNaN(new Date(target.startAt).getTime())
+        ? new Date(target.startAt).getTime()
+        : null;
+    const isFutureStart = target.status === "ASSIGNED" && startAtTime != null && startAtTime > Date.now();
+    if (isFutureStart) {
+      setFeedback({ type: "error", message: "ยังไม่ถึงเวลาเริ่มทำข้อสอบชุดนี้" });
+      return;
+    }
+
     setLoadingId(assignmentId);
     setFeedback(null);
     try {
@@ -88,6 +103,8 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
     }
   };
 
+  const now = Date.now();
+
   return (
     <div className="space-y-4">
       {feedback && (
@@ -116,33 +133,56 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
               </tr>
             </thead>
             <tbody>
-              {assignments.map((assignment) => (
-                <tr key={assignment.id} className="border-b last:border-0">
-                  <td className="px-3 py-2 font-medium">
-                    {assignment.subjectName}{" "}
-                    <span className="text-xs text-muted-foreground">({assignment.subjectCode})</span>
-                  </td>
-                  <td className="px-3 py-2">{assignment.examTitle}</td>
-                  <td className="px-3 py-2">
-                    <Badge variant={statusVariant[assignment.status]}>{statusLabel[assignment.status]}</Badge>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.startAt)}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.dueAt)}</td>
-                  <td className="px-3 py-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleStart(assignment.id)}
-                      disabled={assignment.status === "COMPLETED" || loadingId === assignment.id}
-                    >
-                      {assignment.status === "COMPLETED"
-                        ? "เสร็จแล้ว"
-                        : loadingId === assignment.id
-                          ? "กำลังเริ่ม..."
-                          : "เริ่มทำ"}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {assignments.map((assignment) => {
+                const startAtTime = assignment.startAt ? new Date(assignment.startAt) : null;
+                const isValidStart = startAtTime && !Number.isNaN(startAtTime.getTime()) ? startAtTime : null;
+                const isFutureStart =
+                  assignment.status === "ASSIGNED" && isValidStart != null && isValidStart.getTime() > now;
+                const isLoading = loadingId === assignment.id;
+                const isCompleted = assignment.status === "COMPLETED";
+                const buttonDisabled = isCompleted || isLoading || isFutureStart;
+                const buttonLabel =
+                  assignment.status === "COMPLETED"
+                    ? "เสร็จแล้ว"
+                    : isLoading
+                      ? assignment.status === "IN_PROGRESS"
+                        ? "กำลังเปิด..."
+                        : "กำลังเริ่ม..."
+                      : assignment.status === "IN_PROGRESS"
+                        ? "ทำต่อ"
+                        : isFutureStart
+                          ? "ยังไม่ถึงเวลา"
+                          : "เริ่มทำ";
+
+                return (
+                  <tr key={assignment.id} className="border-b last:border-0">
+                    <td className="px-3 py-2 font-medium">
+                      {assignment.subjectName}{" "}
+                      <span className="text-xs text-muted-foreground">({assignment.subjectCode})</span>
+                    </td>
+                    <td className="px-3 py-2">{assignment.examTitle}</td>
+                    <td className="px-3 py-2">
+                      <Badge variant={statusVariant[assignment.status]}>{statusLabel[assignment.status]}</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.startAt)}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.dueAt)}</td>
+                    <td className="px-3 py-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleStart(assignment.id)}
+                        disabled={buttonDisabled}
+                        title={
+                          isFutureStart && isValidStart
+                            ? `จะเริ่มได้หลังจาก ${isValidStart.toLocaleString()}`
+                            : undefined
+                        }
+                      >
+                        {buttonLabel}
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

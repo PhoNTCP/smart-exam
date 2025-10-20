@@ -3,11 +3,27 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-const createExamSchema = z.object({
-  title: z.string().min(2, "กรุณาระบุชื่อข้อสอบ").max(150, "ชื่อข้อสอบยาวเกินไป"),
-  subjectId: z.string().cuid("รหัสวิชาไม่ถูกต้อง"),
-  isAdaptive: z.boolean().optional(),
-});
+const createExamSchema = z
+  .object({
+    title: z.string().min(2, "กรุณาระบุชื่อข้อสอบ").max(150, "ชื่อข้อสอบยาวเกินไป"),
+    subjectId: z.string().cuid("รหัสวิชาไม่ถูกต้อง"),
+    isAdaptive: z.boolean().optional(),
+    questionCount: z.coerce.number().int().min(1).max(100).optional(),
+    difficultyMin: z.coerce.number().int().min(1).max(5).optional(),
+    difficultyMax: z.coerce.number().int().min(1).max(5).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.difficultyMin == null || data.difficultyMax == null) {
+        return true;
+      }
+      return data.difficultyMin <= data.difficultyMax;
+    },
+    {
+      message: "ช่วงความยากไม่ถูกต้อง",
+      path: ["difficultyMax"],
+    },
+  );
 
 export async function POST(request: Request) {
   try {
@@ -27,12 +43,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "ไม่พบวิชาที่เลือก" }, { status: 404 });
     }
 
+    const questionCount = payload.questionCount ?? 10;
+    const difficultyMin = payload.difficultyMin ?? 1;
+    const difficultyMax = payload.difficultyMax ?? 5;
+
     const exam = await prisma.exam.create({
       data: {
         title: payload.title,
         subjectId: subject.id,
         isAdaptive: payload.isAdaptive ?? true,
         createdById: session.user.id,
+        questionCount,
+        difficultyMin,
+        difficultyMax,
       },
       include: {
         subjectRef: {
@@ -54,6 +77,9 @@ export async function POST(request: Request) {
         subjectCode: exam.subjectRef.code,
         attemptCount: exam._count.attempts,
         createdAt: exam.createdAt,
+        questionCount: exam.questionCount,
+        difficultyMin: exam.difficultyMin,
+        difficultyMax: exam.difficultyMax,
       },
     });
   } catch (error) {

@@ -3,11 +3,27 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-const updateExamSchema = z.object({
-  title: z.string().min(2, "กรุณาระบุชื่อข้อสอบ").max(150, "ชื่อข้อสอบยาวเกินไป").optional(),
-  subjectId: z.string().cuid("รหัสวิชาไม่ถูกต้อง").optional(),
-  isAdaptive: z.boolean().optional(),
-});
+const updateExamSchema = z
+  .object({
+    title: z.string().min(2, "กรุณาระบุชื่อข้อสอบ").max(150, "ชื่อข้อสอบยาวเกินไป").optional(),
+    subjectId: z.string().cuid("รหัสวิชาไม่ถูกต้อง").optional(),
+    isAdaptive: z.boolean().optional(),
+    questionCount: z.coerce.number().int().min(1).max(100).optional(),
+    difficultyMin: z.coerce.number().int().min(1).max(5).optional(),
+    difficultyMax: z.coerce.number().int().min(1).max(5).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.difficultyMin == null || data.difficultyMax == null) {
+        return true;
+      }
+      return data.difficultyMin <= data.difficultyMax;
+    },
+    {
+      message: "ช่วงความยากไม่ถูกต้อง",
+      path: ["difficultyMax"],
+    },
+  );
 
 type RouteParams = {
   params: Promise<{
@@ -56,6 +72,9 @@ export async function PUT(request: Request, { params }: RouteParams) {
         title: payload.title ?? exam.title,
         subjectId,
         isAdaptive: payload.isAdaptive ?? exam.isAdaptive,
+        questionCount: payload.questionCount ?? exam.questionCount,
+        difficultyMin: payload.difficultyMin ?? exam.difficultyMin,
+        difficultyMax: payload.difficultyMax ?? exam.difficultyMax,
       },
       include: {
         subjectRef: true,
@@ -73,6 +92,9 @@ export async function PUT(request: Request, { params }: RouteParams) {
         subjectCode: updated.subjectRef?.code ?? "",
         attemptCount: updated._count.attempts,
         createdAt: updated.createdAt,
+        questionCount: updated.questionCount,
+        difficultyMin: updated.difficultyMin,
+        difficultyMax: updated.difficultyMax,
       },
     });
   } catch (error) {

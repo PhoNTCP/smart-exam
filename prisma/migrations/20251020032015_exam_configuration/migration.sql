@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE `exam` ADD COLUMN `difficultyMax` INTEGER NOT NULL DEFAULT 5,
+    ADD COLUMN `difficultyMin` INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN `questionCount` INTEGER NOT NULL DEFAULT 10;
