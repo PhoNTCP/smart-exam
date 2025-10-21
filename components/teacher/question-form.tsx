@@ -50,6 +50,7 @@ const gradeOptions = [
 ] as const;
 
 const gradeLabel = (value: (typeof gradeOptions)[number]) => {
+    if (value === "UNSPECIFIED") return "ไม่ระบุ";
   switch (value[0]) {
     case "P":
       return `ประถม ${value.slice(1)}`;
@@ -58,7 +59,7 @@ const gradeLabel = (value: (typeof gradeOptions)[number]) => {
     case "U":
       return `มหาวิทยาลัย ปี ${value.slice(1)}`;
     default:
-      return "ไม่ระบุ";
+      return value;
   }
 };
 

@@ -35,6 +35,43 @@ type QuestionResponse = {
   grades: string[];
 };
 
+const gradeOptions = [
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "M1",
+  "M2",
+  "M3",
+  "M4",
+  "M5",
+  "M6",
+  "U1",
+  "U2",
+  "U3",
+  "U4",
+  "U5",
+  "U6",
+  "UNSPECIFIED",
+] as const;
+
+const gradeLabel = (value: (typeof gradeOptions)[number]) => {
+    if (value === "UNSPECIFIED") return "ไม่ระบุ";
+  switch (value[0]) {
+    case "P":
+      return `ประถม ${value.slice(1)}`;
+    case "M":
+      return `มัธยม ${value.slice(1)}`;
+    case "U":
+      return `มหาวิทยาลัย ปี ${value.slice(1)}`;
+    default:
+      return value;
+  }
+};
+
+
 export const QuestionManager = () => {
   const router = useRouter();
   const [questions, setQuestions] = useState<QuestionRow[]>([]);
@@ -228,6 +265,10 @@ export const QuestionManager = () => {
       {
         header: "ระดับชั้น",
         accessorKey: "gradeLevel",
+        cell: ({ getValue }) => {
+          const val = getValue() as (typeof gradeOptions)[number] | string;
+          return <span>{gradeLabel(val as (typeof gradeOptions)[number])}</span>;
+        },
       },
       {
         header: "โจทย์ (ย่อ)",
