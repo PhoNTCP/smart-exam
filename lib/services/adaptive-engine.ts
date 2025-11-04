@@ -126,6 +126,17 @@ const selectNextQuestion = async (
 
   const rankedSource = pool.length > 0 ? pool : candidates;
 
+  if (context.answers.length === 0 && !context.currentQuestionId) {
+    const exactMatches = rankedSource.filter(
+      (question) => (question.aiScores[0]?.difficulty ?? 3) === targetDifficulty,
+    );
+    const initialPool = exactMatches.length > 0 ? exactMatches : rankedSource;
+    if (initialPool.length === 0) {
+      return null;
+    }
+    return initialPool[Math.floor(Math.random() * initialPool.length)];
+  }
+
   const ranked = rankedSource
     .map((question) => ({
       question,
@@ -133,7 +144,14 @@ const selectNextQuestion = async (
     }))
     .sort((a, b) => a.diff - b.diff);
 
-  return ranked[0]?.question ?? null;
+  if (ranked.length === 0) {
+    return null;
+  }
+
+  const bestDiff = ranked[0].diff;
+  const topCandidates = ranked.filter((entry) => entry.diff === bestDiff);
+  const pick = topCandidates[Math.floor(Math.random() * topCandidates.length)];
+  return (pick ?? ranked[0]).question;
 };
 
 type EnsureResult =
@@ -294,7 +312,11 @@ export const finishAttempt = async (attemptId: string, userId: string) => {
       const existing = await tx.examAttempt.findFirst({
         where: { id: attempt.id },
         include: {
-          exam: true,
+          exam: {
+            include: {
+              subjectRef: true,
+            },
+          },
           answers: true,
         },
       });
@@ -311,7 +333,11 @@ export const finishAttempt = async (attemptId: string, userId: string) => {
         currentQuestionId: null,
       },
       include: {
-        exam: true,
+        exam: {
+          include: {
+            subjectRef: true,
+          },
+        },
         answers: true,
       },
     });
@@ -402,7 +428,11 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
           currentQuestionId: null,
         },
         include: {
-          exam: true,
+          exam: {
+            include: {
+              subjectRef: true,
+            },
+          },
           answers: true,
         },
       });
@@ -427,7 +457,11 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
           currentQuestionId: null,
         },
         include: {
-          exam: true,
+          exam: {
+            include: {
+              subjectRef: true,
+            },
+          },
           answers: true,
         },
       });

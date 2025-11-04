@@ -54,6 +54,16 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
       return;
     }
 
+    if (target.status === "COMPLETED") {
+      setFeedback({ type: "error", message: "ข้อสอบชุดนี้ทำเสร็จแล้ว" });
+      return;
+    }
+
+    if (target.status === "IN_PROGRESS" && target.attemptId) {
+      router.push(`/student/exams/${target.attemptId}`);
+      return;
+    }
+
     const startAtTime =
       target.startAt && !Number.isNaN(new Date(target.startAt).getTime())
         ? new Date(target.startAt).getTime()

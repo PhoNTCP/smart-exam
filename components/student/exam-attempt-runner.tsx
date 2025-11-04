@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTutorChatContext } from "@/components/student/tutor-context";
 
 type AttemptQuestion = {
   id: string;
@@ -47,10 +48,22 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [totalQuestions, setTotalQuestions] = useState(initial.total);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [hintVisible, setHintVisible] = useState(false);
   const [pending, setPending] = useState(false);
   const [summary, setSummary] = useState<AttemptSummary | null>(null);
   const [lastExplanation, setLastExplanation] = useState<string | null>(null);
+  const { setContext, openWithPrompt, isSending: isTutorSending } = useTutorChatContext();
+
+  useEffect(() => {
+    if (question) {
+      setContext({ attemptId: initial.attemptId, questionId: question.id });
+    } else {
+      setContext({});
+    }
+  }, [initial.attemptId, question, setContext]);
+
+  useEffect(() => {
+    return () => setContext({});
+  }, [setContext]);
 
   const submitAnswer = async () => {
     if (!question || !selectedChoice) {
@@ -114,7 +127,6 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
       setTheta(json.theta);
       setScore(json.score);
       setSelectedChoice(null);
-      setHintVisible(false);
     } catch (error) {
       console.error(error);
       setFeedback({ type: "error", message: "เกิดข้อผิดพลาดในการส่งคำตอบ" });
@@ -233,8 +245,13 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button variant="outline" type="button" onClick={() => setHintVisible((prev) => !prev)}>
-              ขอคำใบ้ (AI)
+            <Button
+              variant="outline"
+              type="button"
+              disabled={isTutorSending}
+              onClick={() => openWithPrompt("ช่วยให้คำใบ้สำหรับข้อสอบข้อปัจจุบันให้หน่อย")}
+            >
+              {isTutorSending ? "รอคำใบ้จาก AI..." : "ขอคำใบ้ (AI)"}
             </Button>
             <Button type="button" onClick={submitAnswer} disabled={pending}>
               {pending ? "กำลังส่ง..." : "ส่งคำตอบ"}
@@ -244,13 +261,6 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
             </Button>
             <Badge variant="secondary">คะแนนสะสม: {score}</Badge>
           </div>
-
-          {hintVisible && (
-            <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">คำใบ้</p>
-              <p className="mt-1 leading-relaxed">{question.hint}</p>
-            </div>
-          )}
 
           {lastExplanation && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">

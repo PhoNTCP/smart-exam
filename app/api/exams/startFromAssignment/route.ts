@@ -46,6 +46,7 @@ export async function POST(request: Request) {
 
       const subject = link.assignment.subject;
       const teacherId = link.assignment.exam.createdById;
+      
       const availableQuestions = await tx.question.count({
         where: {
           createdById: teacherId,
@@ -58,12 +59,13 @@ export async function POST(request: Request) {
       }
 
       let attemptId = link.attemptId;
+      const userId = session.user!.id as string;
       if (!attemptId) {
         const initialTheta = 0.5;
         const attempt = await tx.examAttempt.create({
           data: {
             examId: link.assignment.examId,
-            userId: session.user!.id,
+            userId: userId,
             thetaStart: new Prisma.Decimal(initialTheta.toFixed(2)),
             thetaEnd: new Prisma.Decimal(initialTheta.toFixed(2)),
             score: 0,
