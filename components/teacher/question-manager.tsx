@@ -23,6 +23,7 @@ type QuestionRow = {
   updatedAt: string;
   difficulty: number | null;
   aiReason: string | null;
+  aiModel: string | null;
   choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
 };
 
@@ -297,6 +298,13 @@ export const QuestionManager = () => {
             <Badge variant={difficulty ? "secondary" : "outline"}>{difficulty ? `ระดับ ${difficulty}` : "—"}</Badge>
           );
         },
+      },
+      {
+        header: "โมเดล (AI)",
+        accessorKey: "aiModel",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">{row.original.aiModel ?? "—"}</span>
+        ),
       },
       {
         header: "เหตุผล (AI)",
@@ -617,6 +625,9 @@ export const QuestionManager = () => {
           {reasonPreview.question ? (
             <div className="space-y-2 text-sm text-muted-foreground">
               <p className="font-medium text-foreground">{reasonPreview.question.subject}</p>
+              <p className="text-xs text-muted-foreground">
+                โมเดล: <span className="font-medium text-foreground">{reasonPreview.question.aiModel ?? "ไม่ระบุ"}</span>
+              </p>
               <p className="whitespace-pre-wrap">{reasonPreview.question.aiReason}</p>
             </div>
           ) : (

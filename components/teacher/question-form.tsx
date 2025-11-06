@@ -255,10 +255,10 @@ export const QuestionForm = ({ initialValues, submitting, onSubmit }: QuestionFo
         )}
       </div>
 
-      <label className="flex items-center gap-2 text-sm font-medium">
+      {/* <label className="flex items-center gap-2 text-sm font-medium">
         <input type="checkbox" {...form.register("shouldRescore")} />
         ต้องการให้ AI ประเมินความยากใหม่ (Rescore)
-      </label>
+      </label> */}
 
       <div className="flex justify-end gap-3">
         <Button type="submit" disabled={submitting}>

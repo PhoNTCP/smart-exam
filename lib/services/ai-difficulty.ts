@@ -42,7 +42,7 @@ const heuristicScore = (input: ScoreInput, provider?: string): ScoreResult => {
   return {
     difficulty,
     reason,
-    modelName: provider ? `heuristic-${provider}` : "heuristic-baseline",
+    modelName: "Local-System",
   };
 };
 
