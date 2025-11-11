@@ -59,11 +59,11 @@ npm run db:push   # create tables in your MySQL schema
 npm run dev       # start http://localhost:3000
 ```
 
-pullcแล้ว run ตามนี้
+Fetch ก่อนแล้วก็ Pull แล้ว run ตามนี้
  - npx prisma migrate deploy
  - npm run prisma:generate
  - npm run dev       # start http://localhost:3000
- 
+
 Optional scripts:
 - `npm run prisma:generate` – regenerate Prisma client
 - `npm run prisma:migrate` – run migrations in deploy mode
