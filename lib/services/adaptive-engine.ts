@@ -18,12 +18,12 @@ const latestReason = (
   question: Question & { aiScores: Array<{ difficulty: number | null; reason: string }> },
 ) => question.aiScores[0]?.reason ?? "AI rationale unavailable";
 
-const serializeQuestion = (
-  question: Question & {
-    aiScores: Array<{ difficulty: number | null; reason: string }>;
-    choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
-  },
-) => ({
+type QuestionWithMeta = Question & {
+  aiScores: Array<{ difficulty: number | null; reason: string }>;
+  choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
+};
+
+const serializeQuestion = (question: QuestionWithMeta) => ({
   id: question.id,
   subject: question.subject,
   gradeLevel: question.gradeLevel,
@@ -43,8 +43,25 @@ const serializeQuestion = (
 type SerializedQuestion = ReturnType<typeof serializeQuestion>;
 type AttemptContext = Awaited<ReturnType<typeof fetchAttemptContext>>;
 
-const getTotalQuestionsForExam = (exam: NonNullable<AttemptContext>["exam"]) =>
-  Math.max(1, exam?.questionCount ?? DEFAULT_TOTAL_QUESTIONS);
+const getStandardQuestionPool = (exam: NonNullable<AttemptContext>["exam"]) => {
+  const entries = exam?.standardQuestions ?? [];
+  return entries
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((entry) => entry.question)
+    .filter((question): question is QuestionWithMeta => Boolean(question));
+};
+
+const getTotalQuestionsForExam = (exam: NonNullable<AttemptContext>["exam"]) => {
+  if (!exam) {
+    return DEFAULT_TOTAL_QUESTIONS;
+  }
+  if (!exam.isAdaptive) {
+    const total = getStandardQuestionPool(exam).length || exam.questionCount || DEFAULT_TOTAL_QUESTIONS;
+    return Math.max(1, total);
+  }
+  return Math.max(1, exam.questionCount ?? DEFAULT_TOTAL_QUESTIONS);
+};
 
 const getDifficultyBounds = (exam: NonNullable<AttemptContext>["exam"]) => {
   const min = exam?.difficultyMin ?? 1;
@@ -66,6 +83,17 @@ const fetchAttemptContext = async (
       exam: {
         include: {
           subjectRef: true,
+          standardQuestions: {
+            include: {
+              question: {
+                include: {
+                  choices: true,
+                  aiScores: { orderBy: { createdAt: "desc" }, take: 1 },
+                },
+              },
+            },
+            orderBy: { order: "asc" },
+          },
         },
       },
       currentQuestion: {
@@ -170,6 +198,178 @@ type EnsureResult =
       totalQuestions: number;
     };
 
+const markAttemptFinished = async (
+  tx: Prisma.TransactionClient,
+  attempt: NonNullable<AttemptContext>,
+) => {
+  if (attempt.finishedAt) {
+    return attempt;
+  }
+
+  return tx.examAttempt.update({
+    where: { id: attempt.id },
+    data: {
+      finishedAt: new Date(),
+      currentQuestionId: null,
+    },
+    include: {
+      exam: {
+        include: {
+          subjectRef: true,
+          standardQuestions: {
+            include: {
+              question: {
+                include: {
+                  choices: true,
+                  aiScores: { orderBy: { createdAt: "desc" }, take: 1 },
+                },
+              },
+            },
+            orderBy: { order: "asc" },
+          },
+        },
+      },
+      currentQuestion: {
+        include: {
+          choices: true,
+          aiScores: { orderBy: { createdAt: "desc" }, take: 1 },
+        },
+      },
+      answers: {
+        select: { id: true, questionId: true, isCorrect: true },
+      },
+    },
+  });
+};
+
+const ensureAdaptiveState = async (
+  tx: Prisma.TransactionClient,
+  attempt: NonNullable<AttemptContext>,
+  userId: string,
+): Promise<EnsureResult> => {
+  const totalQuestions = getTotalQuestionsForExam(attempt.exam);
+  const answeredCount = attempt.answers.length;
+  const finished = Boolean(attempt.finishedAt) || answeredCount >= totalQuestions;
+
+  if (finished) {
+    const completedAttempt = await markAttemptFinished(tx, attempt);
+    return {
+      status: "completed",
+      attempt: completedAttempt,
+      question: null,
+      answeredCount,
+      totalQuestions: getTotalQuestionsForExam(completedAttempt.exam),
+    };
+  }
+
+  if (attempt.currentQuestion) {
+    return {
+      status: "in-progress",
+      attempt,
+      question: serializeQuestion(attempt.currentQuestion),
+      answeredCount,
+      totalQuestions,
+    };
+  }
+
+  const nextQuestion = await selectNextQuestion(tx, attempt);
+  if (!nextQuestion) {
+    const completedAttempt = await markAttemptFinished(tx, attempt);
+    return {
+      status: "completed",
+      attempt: completedAttempt,
+      question: null,
+      answeredCount,
+      totalQuestions: getTotalQuestionsForExam(completedAttempt.exam),
+    };
+  }
+
+  await tx.examAttempt.update({
+    where: { id: attempt.id },
+    data: {
+      currentQuestionId: nextQuestion.id,
+    },
+  });
+
+  const refreshed = await fetchAttemptContext(tx, attempt.id, userId);
+  if (!refreshed || !refreshed.currentQuestion) {
+    throw new Error("NEXT_QUESTION_ASSIGNMENT_FAILED");
+  }
+
+  return {
+    status: "in-progress",
+    attempt: refreshed,
+    question: serializeQuestion(refreshed.currentQuestion),
+    answeredCount: refreshed.answers.length,
+    totalQuestions: getTotalQuestionsForExam(refreshed.exam),
+  };
+};
+
+const ensureStandardState = async (
+  tx: Prisma.TransactionClient,
+  attempt: NonNullable<AttemptContext>,
+  userId: string,
+): Promise<EnsureResult> => {
+  const questionPool = getStandardQuestionPool(attempt.exam);
+  const totalQuestions = questionPool.length;
+  const answeredCount = attempt.answers.length;
+  const finished =
+    Boolean(attempt.finishedAt) || totalQuestions === 0 || answeredCount >= totalQuestions;
+
+  if (finished) {
+    const completedAttempt = await markAttemptFinished(tx, attempt);
+    return {
+      status: "completed",
+      attempt: completedAttempt,
+      question: null,
+      answeredCount: Math.min(answeredCount, totalQuestions),
+      totalQuestions: totalQuestions === 0 ? 0 : totalQuestions,
+    };
+  }
+
+  const expectedQuestion = questionPool[answeredCount];
+  if (!expectedQuestion) {
+    const completedAttempt = await markAttemptFinished(tx, attempt);
+    return {
+      status: "completed",
+      attempt: completedAttempt,
+      question: null,
+      answeredCount,
+      totalQuestions,
+    };
+  }
+
+  if (attempt.currentQuestion && attempt.currentQuestion.id === expectedQuestion.id) {
+    return {
+      status: "in-progress",
+      attempt,
+      question: serializeQuestion(attempt.currentQuestion),
+      answeredCount,
+      totalQuestions,
+    };
+  }
+
+  await tx.examAttempt.update({
+    where: { id: attempt.id },
+    data: {
+      currentQuestionId: expectedQuestion.id,
+    },
+  });
+
+  const refreshed = await fetchAttemptContext(tx, attempt.id, userId);
+  if (!refreshed || !refreshed.currentQuestion) {
+    throw new Error("NEXT_QUESTION_ASSIGNMENT_FAILED");
+  }
+
+  return {
+    status: "in-progress",
+    attempt: refreshed,
+    question: serializeQuestion(refreshed.currentQuestion),
+    answeredCount: refreshed.answers.length,
+    totalQuestions,
+  };
+};
+
 export const ensureCurrentQuestion = async (
   attemptId: string,
   userId: string,
@@ -180,112 +380,11 @@ export const ensureCurrentQuestion = async (
       return null;
     }
 
-    const totalQuestions = getTotalQuestionsForExam(attempt.exam);
-    const answeredCount = attempt.answers.length;
-    const finished = Boolean(attempt.finishedAt) || answeredCount >= totalQuestions;
-
-    if (finished) {
-      const completedAttempt =
-        attempt.finishedAt !== null
-          ? attempt
-          : await tx.examAttempt.update({
-              where: { id: attempt.id },
-              data: {
-                finishedAt: new Date(),
-                currentQuestionId: null,
-              },
-              include: {
-                exam: {
-                  include: {
-                    subjectRef: true,
-                  },
-                },
-                currentQuestion: {
-                  include: {
-                    choices: true,
-                    aiScores: { orderBy: { createdAt: "desc" }, take: 1 },
-                  },
-                },
-                answers: {
-                  select: { id: true, questionId: true, isCorrect: true },
-                },
-              },
-            });
-
-      const completedTotal = getTotalQuestionsForExam(completedAttempt.exam);
-      return {
-        status: "completed",
-        attempt: completedAttempt,
-        question: null,
-        answeredCount,
-        totalQuestions: completedTotal,
-      };
+    if (attempt.exam.isAdaptive) {
+      return ensureAdaptiveState(tx, attempt, userId);
     }
 
-    if (attempt.currentQuestion) {
-      return {
-        status: "in-progress",
-        attempt,
-        question: serializeQuestion(attempt.currentQuestion),
-        answeredCount,
-        totalQuestions,
-      };
-    }
-
-    const nextQuestion = await selectNextQuestion(tx, attempt);
-    if (!nextQuestion) {
-      const completedAttempt = await tx.examAttempt.update({
-        where: { id: attempt.id },
-        data: {
-          finishedAt: new Date(),
-          currentQuestionId: null,
-        },
-        include: {
-          exam: {
-            include: {
-              subjectRef: true,
-            },
-          },
-          currentQuestion: {
-            include: {
-              choices: true,
-              aiScores: { orderBy: { createdAt: "desc" }, take: 1 },
-            },
-          },
-          answers: {
-            select: { id: true, questionId: true, isCorrect: true },
-          },
-        },
-      });
-
-      return {
-        status: "completed",
-        attempt: completedAttempt,
-        question: null,
-        answeredCount,
-        totalQuestions: getTotalQuestionsForExam(completedAttempt.exam),
-      };
-    }
-
-    await tx.examAttempt.update({
-      where: { id: attempt.id },
-      data: {
-        currentQuestionId: nextQuestion.id,
-      },
-    });
-
-    const refreshed = await fetchAttemptContext(tx, attempt.id, userId);
-    if (!refreshed || !refreshed.currentQuestion) {
-      throw new Error("NEXT_QUESTION_ASSIGNMENT_FAILED");
-    }
-
-    return {
-      status: "in-progress",
-      attempt: refreshed,
-      question: serializeQuestion(refreshed.currentQuestion),
-      answeredCount: refreshed.answers.length,
-      totalQuestions: getTotalQuestionsForExam(refreshed.exam),
-    };
+    return ensureStandardState(tx, attempt, userId);
   });
 };
 
@@ -315,6 +414,17 @@ export const finishAttempt = async (attemptId: string, userId: string) => {
           exam: {
             include: {
               subjectRef: true,
+              standardQuestions: {
+                include: {
+                  question: {
+                    include: {
+                      choices: true,
+                      aiScores: { orderBy: { createdAt: "desc" }, take: 1 },
+                    },
+                  },
+                },
+                orderBy: { order: "asc" },
+              },
             },
           },
           answers: true,
@@ -336,6 +446,17 @@ export const finishAttempt = async (attemptId: string, userId: string) => {
         exam: {
           include: {
             subjectRef: true,
+            standardQuestions: {
+              include: {
+                question: {
+                  include: {
+                    choices: true,
+                    aiScores: { orderBy: { createdAt: "desc" }, take: 1 },
+                  },
+                },
+              },
+              orderBy: { order: "asc" },
+            },
           },
         },
         answers: true,
@@ -389,7 +510,9 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
     const isCorrect = selectedChoice.isCorrect;
     const thetaBefore = Number(attempt.thetaEnd ?? attempt.thetaStart) || 0.5;
     const difficulty = latestDifficulty(attempt.currentQuestion);
-    const thetaAfter = clampTheta(thetaBefore + computeThetaDelta(isCorrect, difficulty));
+    const thetaAfter = attempt.exam.isAdaptive
+      ? clampTheta(thetaBefore + computeThetaDelta(isCorrect, difficulty))
+      : thetaBefore;
 
     await tx.attemptAnswer.create({
       data: {
@@ -431,6 +554,17 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
           exam: {
             include: {
               subjectRef: true,
+              standardQuestions: {
+                include: {
+                  question: {
+                    include: {
+                      choices: true,
+                      aiScores: { orderBy: { createdAt: "desc" }, take: 1 },
+                    },
+                  },
+                },
+                orderBy: { order: "asc" },
+              },
             },
           },
           answers: true,
@@ -448,8 +582,62 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
       };
     }
 
-    const nextQuestion = await selectNextQuestion(tx, updated);
-    if (!nextQuestion) {
+    if (updated.exam.isAdaptive) {
+      const nextQuestion = await selectNextQuestion(tx, updated);
+      if (!nextQuestion) {
+        const finishedAttempt = await tx.examAttempt.update({
+          where: { id: attempt.id },
+          data: {
+            finishedAt: new Date(),
+            currentQuestionId: null,
+          },
+          include: {
+            exam: {
+              include: {
+                subjectRef: true,
+              },
+            },
+            answers: true,
+          },
+        });
+
+        return {
+          status: "completed",
+          attempt: finishedAttempt,
+          question: null,
+          answeredCount,
+          thetaAfter,
+          isCorrect,
+          totalQuestions: getTotalQuestionsForExam(finishedAttempt.exam),
+        };
+      }
+
+      await tx.examAttempt.update({
+        where: { id: attempt.id },
+        data: {
+          currentQuestionId: nextQuestion.id,
+        },
+      });
+
+      const refreshed = await fetchAttemptContext(tx, attempt.id, input.userId);
+      if (!refreshed || !refreshed.currentQuestion) {
+        throw new Error("NEXT_QUESTION_ASSIGNMENT_FAILED");
+      }
+
+      return {
+        status: "in-progress",
+        attempt: refreshed,
+        question: serializeQuestion(refreshed.currentQuestion),
+        answeredCount: refreshed.answers.length,
+        thetaAfter,
+        isCorrect,
+        totalQuestions: getTotalQuestionsForExam(refreshed.exam),
+      };
+    }
+
+    const standardPool = getStandardQuestionPool(updated.exam);
+    const nextStandardQuestion = standardPool[answeredCount];
+    if (!nextStandardQuestion) {
       const finishedAttempt = await tx.examAttempt.update({
         where: { id: attempt.id },
         data: {
@@ -460,6 +648,17 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
           exam: {
             include: {
               subjectRef: true,
+              standardQuestions: {
+                include: {
+                  question: {
+                    include: {
+                      choices: true,
+                      aiScores: { orderBy: { createdAt: "desc" }, take: 1 },
+                    },
+                  },
+                },
+                orderBy: { order: "asc" },
+              },
             },
           },
           answers: true,
@@ -480,7 +679,7 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
     await tx.examAttempt.update({
       where: { id: attempt.id },
       data: {
-        currentQuestionId: nextQuestion.id,
+        currentQuestionId: nextStandardQuestion.id,
       },
     });
 
@@ -509,6 +708,7 @@ export const formatAttemptSummary = (attempt: Awaited<ReturnType<typeof finishAt
   thetaEnd: Number(attempt.thetaEnd),
   answered: attempt.answers.length,
   finishedAt: attempt.finishedAt ?? new Date(),
+  isAdaptive: attempt.exam.isAdaptive,
 });
 
 export const ADAPTIVE_TOTAL = DEFAULT_TOTAL_QUESTIONS;

@@ -36,11 +36,14 @@ export async function POST(request: Request) {
         },
       });
 
+      const summary = formatAttemptSummary(result.attempt);
+      const adaptive = summary.isAdaptive;
+
       return NextResponse.json({
         status: "completed",
         summary: {
-          ...formatAttemptSummary(result.attempt),
-          theta: toThetaNumber(result.attempt.thetaEnd),
+          ...summary,
+          theta: adaptive ? toThetaNumber(result.attempt.thetaEnd) : null,
         },
         answeredCount: result.answeredCount,
         total: result.totalQuestions,
@@ -48,12 +51,14 @@ export async function POST(request: Request) {
       });
     }
 
+    const adaptive = result.attempt.exam.isAdaptive;
+
     return NextResponse.json({
       status: "in-progress",
       question: result.question,
       answeredCount: result.answeredCount,
       total: result.totalQuestions,
-      theta: result.thetaAfter,
+      theta: adaptive ? result.thetaAfter : null,
       score: result.attempt?.score ?? 0,
       isCorrect: result.isCorrect,
     });

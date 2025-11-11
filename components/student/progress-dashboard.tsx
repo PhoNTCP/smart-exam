@@ -31,6 +31,7 @@ type AttemptCard = {
   thetaEnd: number;
   updatedAt: string;
   answered: number;
+  isAdaptive: boolean;
 };
 
 type LatestAttempt = {
@@ -42,6 +43,7 @@ type LatestAttempt = {
   thetaEnd: number;
   answered: number;
   averageDifficulty: number | null;
+  isAdaptive: boolean;
 } | null;
 
 type StudentProgressDashboardProps = {
@@ -102,11 +104,15 @@ export const StudentProgressDashboard = ({ data }: StudentProgressDashboardProps
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold">
-              {data.latestAttempt ? data.latestAttempt.thetaEnd.toFixed(2) : "—"}
+              {data.latestAttempt && data.latestAttempt.isAdaptive
+                ? data.latestAttempt.thetaEnd.toFixed(2)
+                : "—"}
             </p>
             <p className="text-xs text-muted-foreground">
               θ เริ่มต้น:{" "}
-              {data.latestAttempt ? data.latestAttempt.thetaStart.toFixed(2) : "—"}
+              {data.latestAttempt && data.latestAttempt.isAdaptive
+                ? data.latestAttempt.thetaStart.toFixed(2)
+                : "—"}
             </p>
           </CardContent>
         </Card>
@@ -125,12 +131,14 @@ export const StudentProgressDashboard = ({ data }: StudentProgressDashboardProps
                 {data.latestAttempt.score} / {data.latestAttempt.answered}
               </span>
             </p>
-            <p>
-              θ:{" "}
-              <span className="font-medium text-foreground">
-                {data.latestAttempt.thetaStart.toFixed(2)} ➜ {data.latestAttempt.thetaEnd.toFixed(2)}
-              </span>
-            </p>
+            {data.latestAttempt.isAdaptive && (
+              <p>
+                θ:{" "}
+                <span className="font-medium text-foreground">
+                  {data.latestAttempt.thetaStart.toFixed(2)} ➜ {data.latestAttempt.thetaEnd.toFixed(2)}
+                </span>
+              </p>
+            )}
             <p>เริ่มทำเมื่อ: {new Date(data.latestAttempt.startedAt).toLocaleString()}</p>
             <p>
               เสร็จเมื่อ:{" "}
@@ -213,12 +221,14 @@ export const StudentProgressDashboard = ({ data }: StudentProgressDashboardProps
                   {attempt.score} / {attempt.answered}
                 </span>
               </p>
-              <p>
-                θ:{" "}
-                <span className="font-medium text-foreground">
-                  {attempt.thetaStart.toFixed(2)} ➜ {attempt.thetaEnd.toFixed(2)}
-                </span>
-              </p>
+              {attempt.isAdaptive && (
+                <p>
+                  θ:{" "}
+                  <span className="font-medium text-foreground">
+                    {attempt.thetaStart.toFixed(2)} ➜ {attempt.thetaEnd.toFixed(2)}
+                  </span>
+                </p>
+              )}
               <p>อัปเดตล่าสุด: {new Date(attempt.updatedAt).toLocaleString()}</p>
             </CardContent>
           </Card>

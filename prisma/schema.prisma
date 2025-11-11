@@ -86,6 +86,7 @@ model Question {
   aiScores     AiScore[]
   attemptLinks AttemptAnswer[]
   currentExamAttempts ExamAttempt[] @relation("CurrentQuestion")
+  examLinks   ExamQuestion[]
 }
 
 model Choice {
@@ -125,6 +126,8 @@ model Exam {
   subjectRef  Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   /// Toggle for adaptive exam logic
   isAdaptive  Boolean      @default(false)
+  /// Allow every student to discover the exam without assignment
+  isPublic    Boolean      @default(false)
   questionCount Int        @default(10)
   difficultyMin Int        @default(1)
   difficultyMax Int        @default(5)
@@ -134,9 +137,25 @@ model Exam {
   createdBy   User         @relation("UserExams", fields: [createdById], references: [id])
   attempts    ExamAttempt[]
   assignments ExamAssignment[]
+  standardQuestions ExamQuestion[]
 
   @@index([subjectId])
   @@index([createdById])
+}
+
+model ExamQuestion {
+  id         String   @id @default(cuid())
+  examId     String
+  questionId String
+  order      Int
+  createdAt  DateTime @default(now())
+
+  exam     Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, order])
+  @@unique([examId, questionId])
+  @@index([questionId])
 }
 
 model ExamAttempt {

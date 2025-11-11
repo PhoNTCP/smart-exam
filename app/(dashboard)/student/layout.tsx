@@ -1,4 +1,4 @@
-import { GraduationCap, LineChart } from "lucide-react";
+import { Globe2, GraduationCap, LineChart } from "lucide-react";
 import { authGuard } from "@/lib/auth-guard";
 import { Navbar } from "@/components/navbar";
 import { Sidebar } from "@/components/sidebar";
@@ -12,6 +12,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
 
   const links = [
     { href: "/student/exams", label: "Upcoming Exams", icon: <GraduationCap className="h-4 w-4" /> },
+    { href: "/student/public-exams", label: "Public Exams", icon: <Globe2 className="h-4 w-4" /> },
     { href: "/student/progress", label: "Progress", icon: <LineChart className="h-4 w-4" /> },
   ];
 

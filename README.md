@@ -59,16 +59,11 @@ npm run db:push   # create tables in your MySQL schema
 npm run dev       # start http://localhost:3000
 ```
 
-### Library setup notes
-- **Next.js 15 + React 19** – ต้องใช้ Node.js 18.18+ หรือ 20+ แนะนำติดตั้งผ่าน `nvm`/`fnm` แล้วรัน `npm run dev` เพื่อตรวจสอบว่า Hot Reload ทำงานครบ (App Router + React Server Components)
-- **Tailwind CSS 4 + shadcn/ui** – สไตล์หลักอยู่ที่ `app/globals.css` และคอมโพเนนต์ shadcn ถูกประกาศใน `components.json` หากต้องเพิ่ม component ใหม่ให้ใช้คำสั่ง `npx shadcn@latest add <component>`
-- **Prisma ORM + MySQL** – ต้องมี MySQL schema พร้อม `DATABASE_URL`; หลังปรับ schema ให้รัน `npx prisma generate && npm run db:push` หรือใช้ `npm run prisma:migrate` ใน production
-- **NextAuth (Credentials)** – ต้องตั้งค่า `NEXTAUTH_URL`, `NEXTAUTH_SECRET` และใช้ `DATABASE_URL` เดียวกับ Prisma เพื่อเก็บ sessions; เมื่อแก้ค่าพวกนี้ให้รีสตาร์ท dev server
-- **AI Difficulty (@google/genai)** – กำหนด `AI_PROVIDER=gemini`, `AI_MODEL=gemini-2.5-flash` (หรือรุ่นที่รองรับ) และใส่ `GEMINI_API_KEY`; ถ้า key ว่าง ระบบจะ fallback เป็น heuristic ใน `lib/services/ai-difficulty.ts`
-- **React Hook Form + Zod** – ฟอร์มครู/นักเรียนใช้ `react-hook-form` คู่กับ `@hookform/resolvers/zod`; ถ้าสร้างฟอร์มใหม่ให้ประกาศ schema ที่ `types/` แล้ว import ในคอมโพเนนต์
-- **TanStack Table + Radix UI + Lucide** – ตารางและ dialog ใน dashboard ใช้ชุด lib นี้ทั้งหมด; ตรวจสอบว่าคอมโพเนนต์ใหม่ import จาก `components/ui` เพื่อได้สไตล์และ transition ครบ
-- **Recharts + XLSX** – รายงานสถิติและการนำเข้า Excel ใช้ไลบรารีทั้งสอง; เมื่ออัปโหลดไฟล์ `.xlsx` ให้เช็ค MIME type ใน `components/teacher/question-importer.tsx` (รองรับเฉพาะ binary/xlsx)
-
+pullcแล้ว run ตามนี้
+ - npx prisma migrate deploy
+ - npm run prisma:generate
+ - npm run dev       # start http://localhost:3000
+ 
 Optional scripts:
 - `npm run prisma:generate` – regenerate Prisma client
 - `npm run prisma:migrate` – run migrations in deploy mode

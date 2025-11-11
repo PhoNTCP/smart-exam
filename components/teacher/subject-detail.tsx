@@ -53,6 +53,7 @@ type ExamRow = {
   id: string;
   title: string;
   isAdaptive: boolean;
+  isPublic: boolean;
   createdAt: string;
   attemptCount: number;
   completedCount: number;
@@ -104,6 +105,7 @@ const difficultyLevels = [1, 2, 3, 4, 5] as const;
 const DEFAULT_EXAM_FORM = {
   title: "",
   isAdaptive: true,
+  isPublic: false,
   questionCount: 10,
   difficultyMin: 1,
   difficultyMax: 5,
@@ -131,6 +133,7 @@ type SubjectDetailProps = {
 type ExamFormState = {
   title: string;
   isAdaptive: boolean;
+  isPublic: boolean;
   questionCount: number;
   difficultyMin: number;
   difficultyMax: number;
@@ -303,6 +306,7 @@ export const SubjectDetail = ({
     setExamForm({
       title: exam.title,
       isAdaptive: exam.isAdaptive,
+      isPublic: exam.isPublic,
       questionCount: exam.questionCount,
       difficultyMin: exam.difficultyMin,
       difficultyMax: exam.difficultyMax,
@@ -345,6 +349,7 @@ export const SubjectDetail = ({
           title: examForm.title.trim(),
           subjectId: subject.id,
           isAdaptive: examForm.isAdaptive,
+          isPublic: examForm.isPublic,
           questionCount: examForm.questionCount,
           difficultyMin: examForm.difficultyMin,
           difficultyMax: examForm.difficultyMax,
@@ -358,6 +363,7 @@ export const SubjectDetail = ({
         id: json.data.id,
         title: json.data.title,
         isAdaptive: json.data.isAdaptive,
+        isPublic: json.data.isPublic ?? examForm.isPublic,
         createdAt: json.data.createdAt,
         attemptCount: json.data.attemptCount ?? 0,
         completedCount: 0,
@@ -406,6 +412,7 @@ export const SubjectDetail = ({
         body: JSON.stringify({
           title: examForm.title.trim(),
           isAdaptive: examForm.isAdaptive,
+          isPublic: examForm.isPublic,
           questionCount: examForm.questionCount,
           difficultyMin: examForm.difficultyMin,
           difficultyMax: examForm.difficultyMax,
@@ -422,6 +429,7 @@ export const SubjectDetail = ({
                 ...item,
                 title: json.data?.title ?? examForm.title.trim(),
                 isAdaptive: json.data?.isAdaptive ?? examForm.isAdaptive,
+                isPublic: json.data?.isPublic ?? examForm.isPublic,
                 questionCount: json.data?.questionCount ?? examForm.questionCount,
                 difficultyMin: json.data?.difficultyMin ?? examForm.difficultyMin,
                 difficultyMax: json.data?.difficultyMax ?? examForm.difficultyMax,
@@ -738,6 +746,25 @@ const handleCreateAssignment = async () => {
                       <option value="standard">Standard</option>
                     </select>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm font-medium">การมองเห็นข้อสอบ</div>
+                    <div className="rounded-md border border-dashed px-2 py-1 flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant={!examForm.isPublic ? "default" : "outline"}
+                        onClick={() => setExamForm((prev) => ({ ...prev, isPublic: false }))}
+                      >
+                        Private
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={examForm.isPublic ? "default" : "outline"}
+                        onClick={() => setExamForm((prev) => ({ ...prev, isPublic: true }))}
+                      >
+                        Public
+                      </Button>
+                    </div>
+                  </div>
                   <div className="grid gap-3 md:grid-cols-3">
                     <div className="space-y-1">
                       <label className="text-sm font-medium">จำนวนข้อสอบ</label>
@@ -830,9 +857,12 @@ const handleCreateAssignment = async () => {
                           สร้างเมื่อ {formatDate(exam.createdAt)} • Attempt ทั้งหมด {exam.attemptCount} • เสร็จสมบูรณ์{" "}
                           {exam.completedCount}
                         </p>
-                        <Badge variant={exam.isAdaptive ? "default" : "secondary"} className="mt-2">
-                          {exam.isAdaptive ? "Adaptive" : "Standard"}
-                        </Badge>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Badge variant={exam.isAdaptive ? "default" : "secondary"}>
+                            {exam.isAdaptive ? "Adaptive" : "Standard"}
+                          </Badge>
+                          {exam.isPublic && <Badge variant="outline">Public</Badge>}
+                        </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                           ข้อสอบ {exam.questionCount} ข้อ • ความยาก {exam.difficultyMin}-{exam.difficultyMax}
                         </p>

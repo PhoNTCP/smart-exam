@@ -51,6 +51,7 @@ export default async function StudentProgressPage() {
                 return sum + difficulty;
               }, 0) / attempts[0].answers.length
             : null,
+        isAdaptive: attempts[0].exam.isAdaptive,
       }
     : null;
 
@@ -99,6 +100,7 @@ export default async function StudentProgressPage() {
     thetaEnd: toNumber(attempt.thetaEnd),
     updatedAt: (attempt.finishedAt ?? attempt.startedAt).toISOString(),
     answered: attempt.answers.length,
+    isAdaptive: attempt.exam.isAdaptive,
   }));
 
   return (

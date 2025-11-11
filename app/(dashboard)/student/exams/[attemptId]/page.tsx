@@ -39,9 +39,12 @@ export default async function StudentAttemptPage({ params }: AttemptPageProps) {
     notFound();
   }
 
-  const examInfo = (attempt as typeof attempt & { exam: { title: string; subjectRef: { name: string; code: string } } }).exam;
+  const examInfo = (attempt as typeof attempt & {
+    exam: { title: string; subjectRef: { name: string; code: string }; isAdaptive: boolean };
+  }).exam;
 
-  const theta = toThetaNumber(attempt.thetaEnd ?? attempt.thetaStart);
+  const isAdaptive = Boolean(examInfo.isAdaptive);
+  const theta = isAdaptive ? toThetaNumber(attempt.thetaEnd ?? attempt.thetaStart) : null;
 
   if (!assignment.question) {
     const summaryAttempt = await finishAttempt(attemptId, user.id ?? "");
@@ -51,7 +54,9 @@ export default async function StudentAttemptPage({ params }: AttemptPageProps) {
         <Card>
           <CardHeader>
             <CardTitle>ข้อสอบเสร็จสิ้นแล้ว</CardTitle>
-            <CardDescription>ดูผลลัพธ์โดยรวมด้านล่าง</CardDescription>
+            <CardDescription>
+              ดูผลลัพธ์โดยรวมของข้อสอบแบบ {summary.isAdaptive ? "Adaptive" : "Standard"}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>
@@ -60,12 +65,17 @@ export default async function StudentAttemptPage({ params }: AttemptPageProps) {
                 {summary.score} / {summary.total}
               </span>
             </p>
-            <p>
-              θ เริ่มต้น: <span className="font-semibold text-foreground">{summary.thetaStart.toFixed(2)}</span>
-            </p>
-            <p>
-              θ สิ้นสุด: <span className="font-semibold text-foreground">{summary.thetaEnd.toFixed(2)}</span>
-            </p>
+            {summary.isAdaptive && (
+              <>
+                <p>
+                  θ เริ่มต้น:{" "}
+                  <span className="font-semibold text-foreground">{summary.thetaStart.toFixed(2)}</span>
+                </p>
+                <p>
+                  θ สิ้นสุด: <span className="font-semibold text-foreground">{summary.thetaEnd.toFixed(2)}</span>
+                </p>
+              </>
+            )}
             <p>ตอบทั้งหมด: {summary.answered} ข้อ</p>
             <Button asChild className="mt-4">
               <a href="/student/progress">กลับไปหน้าสรุปผล</a>
@@ -87,6 +97,7 @@ export default async function StudentAttemptPage({ params }: AttemptPageProps) {
         answeredCount: assignment.answeredCount,
         total: assignment.totalQuestions,
         theta,
+        mode: isAdaptive ? "adaptive" : "standard",
         score: attempt.score,
       }}
     />

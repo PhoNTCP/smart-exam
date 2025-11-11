@@ -26,7 +26,8 @@ type AttemptRunnerProps = {
     question: AttemptQuestion;
     answeredCount: number;
     total: number;
-    theta: number;
+    theta: number | null;
+    mode: "adaptive" | "standard";
     score: number;
   };
 };
@@ -37,6 +38,7 @@ type AttemptSummary = {
   thetaStart: number;
   thetaEnd: number;
   answered: number;
+  isAdaptive: boolean;
 };
 
 export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
@@ -124,7 +126,9 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
       });
       setQuestion(json.question);
       setAnsweredCount(json.answeredCount);
-      setTheta(json.theta);
+      if (initial.mode === "adaptive" && typeof json.theta === "number") {
+        setTheta(json.theta);
+      }
       setScore(json.score);
       setSelectedChoice(null);
     } catch (error) {
@@ -168,7 +172,9 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
         <Card>
           <CardHeader>
             <CardTitle>สรุปผลการทำข้อสอบ</CardTitle>
-            <CardDescription>ผลรวมจากข้อสอบแบบ Adaptive</CardDescription>
+            <CardDescription>
+              ผลรวมจากข้อสอบแบบ {summary.isAdaptive ? "Adaptive" : "Standard"}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>
@@ -177,12 +183,18 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
                 {summary.score} / {summary.total}
               </span>
             </p>
-            <p>
-              θ เริ่มต้น: <span className="font-semibold text-foreground">{summary.thetaStart.toFixed(2)}</span>
-            </p>
-            <p>
-              θ สิ้นสุด: <span className="font-semibold text-foreground">{summary.thetaEnd.toFixed(2)}</span>
-            </p>
+            {summary.isAdaptive && (
+              <>
+                <p>
+                  θ เริ่มต้น:{" "}
+                  <span className="font-semibold text-foreground">{summary.thetaStart.toFixed(2)}</span>
+                </p>
+                <p>
+                  θ สิ้นสุด:{" "}
+                  <span className="font-semibold text-foreground">{summary.thetaEnd.toFixed(2)}</span>
+                </p>
+              </>
+            )}
             <p>ตอบทั้งหมด: {summary.answered} ข้อ</p>
             <div className="flex gap-3 pt-4">
               <Button onClick={() => router.push("/student/progress")}>ดูความก้าวหน้า</Button>
@@ -211,9 +223,15 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
                 วิชา {initial.subjectName} • ข้อที่ {answeredCount + 1} จาก {totalQuestions}
               </CardDescription>
             </div>
-            <Badge className="self-start sm:self-auto" variant="outline">
-              θ ปัจจุบัน: {theta.toFixed(2)}
-            </Badge>
+            {initial.mode === "adaptive" ? (
+              <Badge className="self-start sm:self-auto" variant="outline">
+                θ ปัจจุบัน: {theta != null ? theta.toFixed(2) : "—"}
+              </Badge>
+            ) : (
+              <Badge className="self-start sm:self-auto" variant="secondary">
+                Standard Mode
+              </Badge>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

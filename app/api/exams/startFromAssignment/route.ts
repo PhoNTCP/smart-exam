@@ -4,6 +4,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureCurrentQuestion, toThetaNumber } from "@/lib/services/adaptive-engine";
+import { ensureStandardExamQuestions, StandardExamQuestionError } from "@/lib/services/exam-questions";
 
 const bodySchema = z.object({
   studentExamId: z.string().cuid(),
@@ -46,16 +47,30 @@ export async function POST(request: Request) {
 
       const subject = link.assignment.subject;
       const teacherId = link.assignment.exam.createdById;
-      
-      const availableQuestions = await tx.question.count({
-        where: {
-          createdById: teacherId,
-          ...(subject?.name ? { subject: subject.name } : {}),
-        },
-      });
+      const examRecord = link.assignment.exam;
 
-      if (availableQuestions === 0) {
-        throw new Error("NO_QUESTIONS_AVAILABLE");
+      if (examRecord.isAdaptive) {
+        const availableQuestions = await tx.question.count({
+          where: {
+            createdById: teacherId,
+            ...(subject?.name ? { subject: subject.name } : {}),
+          },
+        });
+
+        if (availableQuestions === 0) {
+          throw new Error("NO_QUESTIONS_AVAILABLE");
+        }
+      } else {
+        await ensureStandardExamQuestions(
+          tx,
+          {
+            examId: examRecord.id,
+            teacherId,
+            subjectName: subject?.name ?? examRecord.subjectRef?.name ?? "",
+            questionCount: examRecord.questionCount,
+          },
+          { force: true },
+        );
       }
 
       let attemptId = link.attemptId;
@@ -96,6 +111,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "ไม่พบข้อมูลข้อสอบ" }, { status: 404 });
     }
 
+    const isAdaptive = assignment.exam.isAdaptive;
+    const thetaValue = isAdaptive
+      ? toThetaNumber(next.attempt.thetaEnd ?? next.attempt.thetaStart)
+      : null;
+
     if (next.status === "completed") {
       return NextResponse.json({
         attemptId,
@@ -109,7 +129,7 @@ export async function POST(request: Request) {
         summary: {
           answered: next.answeredCount,
           total: next.totalQuestions,
-          theta: toThetaNumber(next.attempt.thetaEnd),
+          theta: thetaValue,
           score: next.attempt.score,
         },
       });
@@ -124,7 +144,7 @@ export async function POST(request: Request) {
         subjectCode: assignment.exam.subjectRef?.code ?? "",
       },
       question: next.question,
-      theta: toThetaNumber(next.attempt.thetaEnd ?? next.attempt.thetaStart),
+      theta: thetaValue,
       answeredCount: next.answeredCount,
       total: next.totalQuestions,
       score: next.attempt.score,
@@ -149,6 +169,14 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
+    }
+    if (error instanceof StandardExamQuestionError) {
+      return NextResponse.json(
+        {
+          message: `ข้อสอบ Standard ต้องการ ${error.required} ข้อ แต่มีเพียง ${error.available} ข้อ`,
+        },
+        { status: 400 },
+      );
     }
     return NextResponse.json({ message: "ไม่สามารถเริ่มทำข้อสอบได้" }, { status: 500 });
   }

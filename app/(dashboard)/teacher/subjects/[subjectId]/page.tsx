@@ -117,6 +117,7 @@ export default async function TeacherSubjectDetailPage({ params }: PageParams) {
     id: exam.id,
     title: exam.title,
     isAdaptive: exam.isAdaptive,
+    isPublic: exam.isPublic,
     createdAt: exam.createdAt.toISOString(),
     attemptCount: exam.attempts.length,
     completedCount: exam.attempts.filter((attempt: Attempt) => Boolean(attempt.finishedAt)).length,
