@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 type TutorContextState = {
   attemptId?: string;
   questionId?: string;
+  examMode?: "adaptive" | "standard";
 };
 
 type TutorContextValue = TutorContextState & {
@@ -53,6 +54,7 @@ export const TutorChatProvider = ({ children }: { children: ReactNode }) => {
     () => ({
       attemptId: state.attemptId,
       questionId: state.questionId,
+      examMode: state.examMode,
       setContext,
       isOpen,
       setOpen,

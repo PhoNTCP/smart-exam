@@ -57,11 +57,11 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
 
   useEffect(() => {
     if (question) {
-      setContext({ attemptId: initial.attemptId, questionId: question.id });
+      setContext({ attemptId: initial.attemptId, questionId: question.id, examMode: initial.mode });
     } else {
       setContext({});
     }
-  }, [initial.attemptId, question, setContext]);
+  }, [initial.attemptId, initial.mode, question, setContext]);
 
   useEffect(() => {
     return () => setContext({});

@@ -33,18 +33,19 @@ const initialGreeting: ChatMessage = {
 export const TutorChat = ({ attemptId, questionId, className, autoPrompt, onAutoPromptConsumed }: TutorChatProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([initialGreeting]);
   const [input, setInput] = useState("");
-  const { isSending, setSending } = useTutorChatContext();
+  const { isSending, setSending, examMode } = useTutorChatContext();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isContextual = Boolean(attemptId && questionId);
   const autoPromptSentRef = useRef<string | null>(null);
+  const isBlocked = examMode === "standard";
 
-  const canSend = input.trim().length > 0 && !pending;
+  const canSend = input.trim().length > 0 && !pending && !isBlocked;
 
   const sendMessage = useCallback(async (override?: string) => {
     const trimmedSource = override ?? input;
     const trimmed = trimmedSource.trim();
-    if (!trimmed || pending || isSending) {
+    if (!trimmed || pending || isSending || isBlocked) {
       return;
     }
     setPending(true);
@@ -120,7 +121,7 @@ export const TutorChat = ({ attemptId, questionId, className, autoPrompt, onAuto
   }, [attemptId, isContextual, isSending, pending, questionId, input, setSending]);
 
   useEffect(() => {
-    if (!autoPrompt) {
+    if (!autoPrompt || isBlocked) {
       return;
     }
 
@@ -157,7 +158,11 @@ export const TutorChat = ({ attemptId, questionId, className, autoPrompt, onAuto
             ระบบนี้ไม่เก็บประวัติการสนทนาไว้ในฐานข้อมูล บทสนทนาจะหายไปเมื่อปิดหน้าจอ
           </p>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {isContextual ? (
+            {isBlocked ? (
+              <span className="rounded-full bg-destructive/10 px-3 py-1 text-destructive">
+                โหมด Standard ไม่อนุญาตให้ใช้ผู้ช่วย AI ในข้อนี้
+              </span>
+            ) : isContextual ? (
               <span className="rounded-full bg-primary/10 px-3 py-1 text-primary">
                 กำลังเชื่อมกับคำถามข้อสอบปัจจุบัน (AI จะให้คำใบ้ ไม่เฉลยตรงๆ)
               </span>
@@ -220,12 +225,17 @@ export const TutorChat = ({ attemptId, questionId, className, autoPrompt, onAuto
             rows={3}
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="พิมพ์คำถามหรือขอคำใบ้จากผู้ช่วย AI..."
+            placeholder={isBlocked ? "โหมด Standard ไม่อนุญาตให้ใช้ AI ช่วย" : "พิมพ์คำถามหรือขอคำใบ้จากผู้ช่วย AI..."}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            disabled={isBlocked}
           />
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">
-              {isContextual ? "AI จะอ้างอิงคำถามข้อสอบเพื่อให้คำใบ้" : "สนทนาในโหมดทั่วไป ไม่อ้างอิงข้อสอบ"}
+              {isBlocked
+                ? "ปิดการส่งข้อความในโหมด Standard"
+                : isContextual
+                  ? "AI จะอ้างอิงคำถามข้อสอบเพื่อให้คำใบ้"
+                  : "สนทนาในโหมดทั่วไป ไม่อ้างอิงข้อสอบ"}
             </span>
             <Button type="submit" size="sm" disabled={!canSend}>
               {pending ? "กำลังส่ง..." : "ส่งข้อความ"}
