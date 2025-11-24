@@ -10,7 +10,7 @@ export default async function Home() {
   }
 
   if (session.user.role === "teacher") {
-    redirect("/teacher/questions");
+    redirect("/teacher/subjects");
   }
 
   redirect("/student/exams");

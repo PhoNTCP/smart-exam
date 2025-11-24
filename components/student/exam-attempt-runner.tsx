@@ -70,6 +70,9 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
   const submitAnswer = async () => {
     if (!question || !selectedChoice) {
       setFeedback({ type: "error", message: "กรุณาเลือกคำตอบก่อน" });
+      if (typeof window !== "undefined") {
+        window.alert("กรุณาเลือกคำตอบก่อนส่ง");
+      }
       return;
     }
     setPending(true);
@@ -140,6 +143,16 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
   };
 
   const finishAttempt = async () => {
+    if (question && answeredCount < totalQuestions) {
+      if (typeof window !== "undefined") {
+        const proceed = window.confirm(
+          `คุณยังตอบไม่ครบ (${answeredCount}/${totalQuestions}) ต้องการส่งข้อสอบเลยหรือไม่?`,
+        );
+        if (!proceed) {
+          return;
+        }
+      }
+    }
     setPending(true);
     setFeedback(null);
     try {
@@ -263,14 +276,16 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="outline"
-              type="button"
-              disabled={isTutorSending}
-              onClick={() => openWithPrompt("ช่วยให้คำใบ้สำหรับข้อสอบข้อปัจจุบันให้หน่อย")}
-            >
-              {isTutorSending ? "รอคำใบ้จาก AI..." : "ขอคำใบ้ (AI)"}
-            </Button>
+            {initial.mode === "adaptive" && (
+              <Button
+                variant="outline"
+                type="button"
+                disabled={isTutorSending}
+                onClick={() => openWithPrompt("ช่วยให้คำใบ้สำหรับข้อสอบข้อปัจจุบันให้หน่อย")}
+              >
+                {isTutorSending ? "รอคำใบ้จาก AI..." : "ขอคำใบ้ (AI)"}
+              </Button>
+            )}
             <Button type="button" onClick={submitAnswer} disabled={pending}>
               {pending ? "กำลังส่ง..." : "ส่งคำตอบ"}
             </Button>

@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTutorChatContext } from "@/components/student/tutor-context";
+import { useRef } from "react";
 
 type ChatMessage = {
   id: string;
@@ -36,6 +37,7 @@ export const TutorChat = ({ attemptId, questionId, className, autoPrompt, onAuto
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isContextual = Boolean(attemptId && questionId);
+  const autoPromptSentRef = useRef<string | null>(null);
 
   const canSend = input.trim().length > 0 && !pending;
 
@@ -121,6 +123,12 @@ export const TutorChat = ({ attemptId, questionId, className, autoPrompt, onAuto
     if (!autoPrompt) {
       return;
     }
+
+    // Prevent double-send in React StrictMode by remembering last prompt
+    if (autoPromptSentRef.current === autoPrompt) {
+      return;
+    }
+    autoPromptSentRef.current = autoPrompt;
 
     let cancelled = false;
     const trigger = async () => {

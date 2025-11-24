@@ -62,6 +62,13 @@ type ExamRow = {
   difficultyMax: number;
 };
 
+type StandardQuestion = {
+  id: string;
+  body: string;
+  gradeLevel: string;
+  difficulty: number | null;
+};
+
 type AssignmentRow = {
   id: string;
   examId: string;
@@ -108,7 +115,6 @@ const DEFAULT_EXAM_FORM = {
   isPublic: false,
   questionCount: 10,
   difficultyMin: 1,
-  difficultyMax: 5,
 } satisfies ExamFormState;
 
 const formatDate = (iso: string) => new Date(iso).toLocaleString();
@@ -136,7 +142,6 @@ type ExamFormState = {
   isPublic: boolean;
   questionCount: number;
   difficultyMin: number;
-  difficultyMax: number;
 };
 
 type AssignmentFormState = {
@@ -172,6 +177,13 @@ export const SubjectDetail = ({
   });
   const [assignmentDetailOpen, setAssignmentDetailOpen] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentRow | null>(null);
+  const [questionPickerOpen, setQuestionPickerOpen] = useState(false);
+  const [questionPickerExam, setQuestionPickerExam] = useState<ExamRow | null>(null);
+  const [questionPool, setQuestionPool] = useState<StandardQuestion[]>([]);
+  const [selectedStandardQuestions, setSelectedStandardQuestions] = useState<StandardQuestion[]>([]);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [savingQuestions, setSavingQuestions] = useState(false);
+  const [questionPickerMode, setQuestionPickerMode] = useState<"create" | "existing">("existing");
 
   const completionRate = useMemo(() => {
     if (summaryState.totalAttempts === 0) return "0%";
@@ -293,10 +305,11 @@ export const SubjectDetail = ({
     }
   };
 
-    const handleOpenCreateExam = () => {
+  const handleOpenCreateExam = () => {
     setFeedback(null);
     setEditingExam(null);
     setExamForm({ ...DEFAULT_EXAM_FORM });
+    setSelectedStandardQuestions([]);
     setExamDialogOpen(true);
   };
 
@@ -309,7 +322,6 @@ export const SubjectDetail = ({
       isPublic: exam.isPublic,
       questionCount: exam.questionCount,
       difficultyMin: exam.difficultyMin,
-      difficultyMax: exam.difficultyMax,
     });
     setExamDialogOpen(true);
   };
@@ -317,6 +329,132 @@ export const SubjectDetail = ({
   const handleOpenAssignmentDetails = (assignment: AssignmentRow) => {
     setSelectedAssignment(assignment);
     setAssignmentDetailOpen(true);
+  };
+
+  const loadQuestionPool = async () => {
+    const response = await fetch(
+      `/api/questions?subject=${encodeURIComponent(subject.name)}&pageSize=50`,
+    );
+    const json = await response.json();
+    if (!response.ok) {
+      throw new Error(json.message ?? "ไม่สามารถโหลดคลังคำถามได้");
+    }
+    const questions: StandardQuestion[] = (json.data ?? []).map((item: any) => ({
+      id: item.id,
+      body: item.body,
+      gradeLevel: item.gradeLevel,
+      difficulty: item.difficulty ?? null,
+    }));
+    setQuestionPool(questions);
+  };
+
+  const loadSelectedQuestions = async (examId: string) => {
+    const response = await fetch(`/api/exams/${examId}/questions`);
+    const json = await response.json();
+    if (!response.ok) {
+      throw new Error(json.message ?? "ไม่สามารถโหลดชุดคำถามเดิมได้");
+    }
+    const questions: StandardQuestion[] = (json.data ?? []).map((item: any) => ({
+      id: item.id,
+      body: item.body,
+      gradeLevel: item.gradeLevel,
+      difficulty: item.difficulty ?? null,
+    }));
+    setSelectedStandardQuestions(questions);
+  };
+
+  const handleOpenQuestionPicker = async (exam?: ExamRow | null) => {
+    setFeedback(null);
+    setQuestionPickerExam(exam ?? null);
+    setQuestionPickerMode(exam ? "existing" : "create");
+    setQuestionPickerOpen(true);
+    setLoadingQuestions(true);
+    try {
+      const jobs: Array<Promise<unknown>> = [loadQuestionPool()];
+      if (exam) {
+        jobs.push(loadSelectedQuestions(exam.id));
+      }
+      await Promise.all(jobs);
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "โหลดรายการคำถามไม่สำเร็จ",
+      });
+    } finally {
+      setLoadingQuestions(false);
+    }
+  };
+
+  const addStandardQuestion = (question: StandardQuestion) => {
+    setSelectedStandardQuestions((prev) => {
+      if (prev.some((item) => item.id === question.id)) {
+        return prev;
+      }
+      return [...prev, question];
+    });
+  };
+
+  const removeStandardQuestion = (questionId: string) => {
+    setSelectedStandardQuestions((prev) => prev.filter((item) => item.id !== questionId));
+  };
+
+  const moveStandardQuestion = (questionId: string, direction: "up" | "down") => {
+    setSelectedStandardQuestions((prev) => {
+      const index = prev.findIndex((item) => item.id === questionId);
+      if (index === -1) return prev;
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const next = prev.slice();
+      const [item] = next.splice(index, 1);
+      next.splice(targetIndex, 0, item);
+      return next;
+    });
+  };
+
+  const handleSaveStandardQuestions = async () => {
+    if (!questionPickerExam && questionPickerMode === "existing") return;
+    if (selectedStandardQuestions.length === 0) {
+      setFeedback({ type: "error", message: "กรุณาเลือกคำถามอย่างน้อย 1 ข้อ" });
+      return;
+    }
+    setSavingQuestions(true);
+    setFeedback(null);
+    try {
+      if (questionPickerExam) {
+        const response = await fetch(`/api/exams/${questionPickerExam.id}/questions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            questionIds: selectedStandardQuestions.map((q) => q.id),
+          }),
+        });
+        const json = await response.json();
+        if (!response.ok) {
+          throw new Error(json.message ?? "บันทึกชุดคำถามไม่สำเร็จ");
+        }
+
+        setExams((prev) =>
+          prev.map((exam) =>
+            exam.id === questionPickerExam.id
+              ? { ...exam, questionCount: json.count ?? selectedStandardQuestions.length }
+              : exam,
+          ),
+        );
+      }
+
+      setFeedback({ type: "success", message: "บันทึกชุดคำถามเรียบร้อย" });
+      setQuestionPickerOpen(false);
+      setQuestionPickerExam(null);
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "บันทึกชุดคำถามไม่สำเร็จ",
+      });
+    } finally {
+      setSavingQuestions(false);
+    }
   };
 
   const validateExamForm = () => {
@@ -328,10 +466,6 @@ export const SubjectDetail = ({
       setFeedback({ type: "error", message: "จำนวนข้อสอบต้องมากกว่า 0" });
       return false;
     }
-    if (examForm.difficultyMin > examForm.difficultyMax) {
-      setFeedback({ type: "error", message: "ช่วงความยากไม่ถูกต้อง" });
-      return false;
-    }
     return true;
   };
 
@@ -339,9 +473,17 @@ export const SubjectDetail = ({
     if (!validateExamForm()) {
       return;
     }
+    if (!examForm.isAdaptive && selectedStandardQuestions.length === 0) {
+      setFeedback({ type: "error", message: "โปรดเลือกคำถามสำหรับข้อสอบ Standard อย่างน้อย 1 ข้อ" });
+      return;
+    }
     setExamSubmitting(true);
     setFeedback(null);
     try {
+      const questionCountPayload = examForm.isAdaptive
+        ? examForm.questionCount
+        : selectedStandardQuestions.length || examForm.questionCount;
+
       const response = await fetch("/api/exams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -350,9 +492,8 @@ export const SubjectDetail = ({
           subjectId: subject.id,
           isAdaptive: examForm.isAdaptive,
           isPublic: examForm.isPublic,
-          questionCount: examForm.questionCount,
+          questionCount: questionCountPayload,
           difficultyMin: examForm.difficultyMin,
-          difficultyMax: examForm.difficultyMax,
         }),
       });
       const json = await response.json();
@@ -369,8 +510,29 @@ export const SubjectDetail = ({
         completedCount: 0,
         questionCount: json.data.questionCount ?? examForm.questionCount,
         difficultyMin: json.data.difficultyMin ?? examForm.difficultyMin,
-        difficultyMax: json.data.difficultyMax ?? examForm.difficultyMax,
+        difficultyMax: 0
       };
+
+      if (!newExam.isAdaptive && selectedStandardQuestions.length > 0) {
+        try {
+          const qsResponse = await fetch(`/api/exams/${newExam.id}/questions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ questionIds: selectedStandardQuestions.map((q) => q.id) }),
+          });
+          const qsJson = await qsResponse.json();
+          if (!qsResponse.ok) {
+            throw new Error(qsJson.message ?? "ตั้งชุดคำถามไม่สำเร็จ");
+          }
+          newExam.questionCount = qsJson.count ?? selectedStandardQuestions.length;
+        } catch (error) {
+          console.error(error);
+          setFeedback({
+            type: "error",
+            message: error instanceof Error ? error.message : "ตั้งชุดคำถามไม่สำเร็จ",
+          });
+        }
+      }
 
       setExams((prev) => [newExam, ...prev]);
       setAssignmentForm((prev) => ({
@@ -384,6 +546,7 @@ export const SubjectDetail = ({
       setExamDialogOpen(false);
       setEditingExam(null);
       setExamForm({ ...DEFAULT_EXAM_FORM });
+      setSelectedStandardQuestions([]);
       setFeedback({ type: "success", message: "สร้างข้อสอบเรียบร้อย" });
     } catch (error) {
       console.error(error);
@@ -406,6 +569,10 @@ export const SubjectDetail = ({
     setExamSubmitting(true);
     setFeedback(null);
     try {
+      const questionCountPayload = examForm.isAdaptive
+        ? examForm.questionCount
+        : selectedStandardQuestions.length || editingExam?.questionCount || examForm.questionCount;
+
       const response = await fetch(`/api/exams/${editingExam.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -413,9 +580,8 @@ export const SubjectDetail = ({
           title: examForm.title.trim(),
           isAdaptive: examForm.isAdaptive,
           isPublic: examForm.isPublic,
-          questionCount: examForm.questionCount,
+          questionCount: questionCountPayload,
           difficultyMin: examForm.difficultyMin,
-          difficultyMax: examForm.difficultyMax,
         }),
       });
       const json = await response.json();
@@ -432,7 +598,6 @@ export const SubjectDetail = ({
                 isPublic: json.data?.isPublic ?? examForm.isPublic,
                 questionCount: json.data?.questionCount ?? examForm.questionCount,
                 difficultyMin: json.data?.difficultyMin ?? examForm.difficultyMin,
-                difficultyMax: json.data?.difficultyMax ?? examForm.difficultyMax,
                 attemptCount: json.data?.attemptCount ?? item.attemptCount,
                 createdAt: json.data?.createdAt ?? item.createdAt,
               }
@@ -766,7 +931,7 @@ const handleCreateAssignment = async () => {
                     </div>
                   </div>
                   <div className="grid gap-3 md:grid-cols-3">
-                    <div className="space-y-1">
+                    <div className="space-y-1" hidden={!examForm.isAdaptive}>
                       <label className="text-sm font-medium">จำนวนข้อสอบ</label>
                       <Input
                         type="number"
@@ -781,7 +946,7 @@ const handleCreateAssignment = async () => {
                         }
                       />
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1" hidden={!examForm.isAdaptive}>
                       <label className="text-sm font-medium">ความยากขั้นต่ำ</label>
                       <select
                         className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
@@ -801,27 +966,22 @@ const handleCreateAssignment = async () => {
                         ))}
                       </select>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">ความยากสูงสุด</label>
-                      <select
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
-                        value={examForm.difficultyMax}
-                        onChange={(event) =>
-                          setExamForm((prev) => ({
-                            ...prev,
-                            difficultyMax: Number(event.target.value),
-                          }))
-                        }
-                        disabled={!examForm.isAdaptive}
-                      >
-                        {difficultyLevels.map((level) => (
-                          <option key={level} value={level}>
-                            ระดับ {level}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                   </div>
+                  {!examForm.isAdaptive && (
+                    <div className="rounded-md border border-dashed p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium">เลือกคำถามสำหรับข้อสอบ Standard</p>
+                          <p className="text-xs text-muted-foreground">
+                            เลือกและเรียงลำดับคำถามได้ (จำนวนที่เลือก: {selectedStandardQuestions.length})
+                          </p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleOpenQuestionPicker(null)}>
+                          เลือกคำถาม
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="outline" onClick={() => setExamDialogOpen(false)} disabled={examSubmitting}>
                       ยกเลิก
@@ -864,10 +1024,16 @@ const handleCreateAssignment = async () => {
                           {exam.isPublic && <Badge variant="outline">Public</Badge>}
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          ข้อสอบ {exam.questionCount} ข้อ • ความยาก {exam.difficultyMin}-{exam.difficultyMax}
+                          ข้อสอบ {exam.questionCount} ข้อ
+                          {exam.isAdaptive ? ` • ความยาก ${exam.difficultyMin}-${exam.difficultyMax}` : ""}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
+                        {!exam.isAdaptive && (
+                          <Button variant="outline" size="sm" onClick={() => handleOpenQuestionPicker(exam)}>
+                            เลือกคำถาม
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -1021,6 +1187,112 @@ const handleCreateAssignment = async () => {
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={questionPickerOpen}
+        onOpenChange={(open) => {
+          setQuestionPickerOpen(open);
+          if (!open) {
+            setQuestionPickerExam(null);
+          }
+        }}
+      >
+        <DialogContent className="w-[96vw] max-w-[80vw] sm:max-w-[80vw] max-h-[82vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Pick Standard Questions</DialogTitle>
+            <DialogDescription>
+              เลือกคำถามมาจัดเป็นชุดสำหรับโหมด Standard และเรียงลำดับเองได้
+            </DialogDescription>
+          </DialogHeader>
+          {loadingQuestions ? (
+            <p className="text-sm text-muted-foreground">กำลังโหลดคำถาม...</p>
+          ) : questionPickerExam || questionPickerMode === "create" ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-3 rounded-md border p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">คำถามในวิชา {subject.name}</p>
+                  <Badge variant="outline">ทั้งหมด {questionPool.length}</Badge>
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto space-y-2">
+                  {questionPool.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">ยังไม่มีคำถาม</p>
+                  ) : (
+                    questionPool.map((q) => {
+                      const picked = selectedStandardQuestions.some((item) => item.id === q.id);
+                      return (
+                        <div key={q.id} className="rounded-md border p-3 text-sm space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium truncate">{q.body.slice(0, 80)}</span>
+                            {q.difficulty ? <Badge variant="secondary">ระดับ {q.difficulty}</Badge> : null}
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">ระดับชั้น: {q.gradeLevel}</span>
+                            <Button
+                              size="sm"
+                              variant={picked ? "ghost" : "outline"}
+                              disabled={picked}
+                              onClick={() => addStandardQuestion(q)}
+                            >
+                              {picked ? "เลือกแล้ว" : "เพิ่ม"}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+              <div className="space-y-3 rounded-md border p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">ชุดที่เลือก (เรียงได้)</p>
+                  <Badge variant="default">ทั้งหมด {selectedStandardQuestions.length}</Badge>
+                </div>
+                {selectedStandardQuestions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">ยังไม่ได้เลือกคำถาม กรุณาเพิ่ม</p>
+                ) : (
+                  <div className="max-h-[60vh] overflow-y-auto space-y-2">
+                    {selectedStandardQuestions.map((q, index) => (
+                      <div key={q.id} className="flex items-center gap-2 rounded-md border p-3 text-sm">
+                        <span className="w-8 text-xs text-muted-foreground">#{index + 1}</span>
+                        <div className="flex-1">
+                          <p className="font-medium truncate">{q.body.slice(0, 80)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {q.difficulty ? `ระดับ ${q.difficulty}` : "ระดับ ไม่ระบุ"} • ชั้น {q.gradeLevel}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => moveStandardQuestion(q.id, "up")}>
+                            Up
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => moveStandardQuestion(q.id, "down")}>
+                            Down
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => removeStandardQuestion(q.id)}>
+                            ลบ
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setQuestionPickerOpen(false)} disabled={savingQuestions}>
+                    ปิด
+                  </Button>
+                  <Button
+                    onClick={handleSaveStandardQuestions}
+                    disabled={savingQuestions || selectedStandardQuestions.length === 0}
+                  >
+                    {savingQuestions ? "กำลังบันทึก..." : "บันทึกชุดคำถาม"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">ไม่พบข้อมูล</p>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={assignmentDetailOpen}
