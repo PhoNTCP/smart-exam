@@ -33,12 +33,13 @@ export async function POST(request: Request) {
     if (!session?.user || session.user.role !== "teacher" || !session.user.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
     }
+    const teacherId = session.user.id;
 
     const body = await request.json();
     const payload = createExamSchema.parse(body);
 
     const subject = await prisma.subject.findFirst({
-      where: { id: payload.subjectId, createdById: session.user.id },
+      where: { id: payload.subjectId, createdById: teacherId },
       select: { id: true, name: true, code: true },
     });
     if (!subject) {
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
           subjectId: subject.id,
           isAdaptive: payload.isAdaptive ?? true,
           isPublic: payload.isPublic ?? false,
-          createdById: session.user.id,
+          createdById: teacherId,
           questionCount,
           difficultyMin,
           difficultyMax,
@@ -76,7 +77,7 @@ export async function POST(request: Request) {
           tx,
           {
             examId: created.id,
-            teacherId: session.user.id,
+            teacherId,
             subjectName: subject.name,
             questionCount,
           },

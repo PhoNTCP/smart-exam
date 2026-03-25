@@ -19,8 +19,21 @@ const latestReason = (
 ) => question.aiScores[0]?.reason ?? "AI rationale unavailable";
 
 type QuestionWithMeta = Question & {
-  aiScores: Array<{ difficulty: number | null; reason: string }>;
-  choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
+  aiScores: Array<{
+    id: string;
+    questionId: string;
+    difficulty: number | null;
+    reason: string;
+    modelName: string;
+    createdAt: Date;
+  }>;
+  choices: Array<{
+    id: string;
+    questionId: string;
+    text: string;
+    isCorrect: boolean;
+    order: number;
+  }>;
 };
 
 const serializeQuestion = (question: QuestionWithMeta) => ({
@@ -49,7 +62,7 @@ const getStandardQuestionPool = (exam: NonNullable<AttemptContext>["exam"]) => {
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((entry) => entry.question)
-    .filter((question): question is QuestionWithMeta => Boolean(question));
+    .filter(Boolean) as QuestionWithMeta[];
 };
 
 const getTotalQuestionsForExam = (exam: NonNullable<AttemptContext>["exam"]) => {
@@ -603,12 +616,12 @@ export const recordAnswer = async (input: RecordAnswerInput): Promise<RecordAnsw
 
         return {
           status: "completed",
-          attempt: finishedAttempt,
+          attempt: finishedAttempt as FinishedAttempt,
           question: null,
           answeredCount,
           thetaAfter,
           isCorrect,
-          totalQuestions: getTotalQuestionsForExam(finishedAttempt.exam),
+          totalQuestions,
         };
       }
 

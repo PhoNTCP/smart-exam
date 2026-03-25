@@ -88,11 +88,13 @@ const callGeminiTutor = async (input: {
 
   const response = await client.models.generateContent({
     model: input.modelName,
-    systemInstruction: {
-      role: "system",
-      parts: [{ text: input.systemPrompt }],
-    },
     contents,
+    config: {
+      systemInstruction: {
+        role: "system",
+        parts: [{ text: input.systemPrompt }],
+      },
+    },
   });
 
   return response.text?.trim() ?? "";

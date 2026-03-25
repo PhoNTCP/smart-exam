@@ -18,7 +18,6 @@ type AttemptRow = {
   answerCount: number;
   startedAt: string;
   finishedAt: string | null;
-  durationMs: number | null;
 };
 
 type TeacherReportsDashboardProps = {
@@ -27,8 +26,6 @@ type TeacherReportsDashboardProps = {
     subjects: string[];
   };
 };
-
-const formatSeconds = (seconds: number) => `${seconds.toFixed(1)} วินาที`;
 
 const buildCsv = (rows: Array<Record<string, string | number>>) => {
   if (rows.length === 0) {
@@ -99,21 +96,15 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
       return {
         totalAttempts: 0,
         averageScore: 0,
-        averageTimePerQuestion: 0,
       };
     }
+
     const totalAttempts = filteredAttempts.length;
     const totalScore = filteredAttempts.reduce((sum, attempt) => sum + attempt.score, 0);
-    const totalTime = filteredAttempts.reduce((sum, attempt) => {
-      if (!attempt.durationMs || attempt.answerCount === 0) return sum;
-      return sum + attempt.durationMs;
-    }, 0);
-    const totalQuestions = filteredAttempts.reduce((sum, attempt) => sum + attempt.answerCount, 0);
 
     return {
       totalAttempts,
       averageScore: totalScore / totalAttempts,
-      averageTimePerQuestion: totalQuestions > 0 ? totalTime / totalQuestions / 1000 : 0,
     };
   }, [filteredAttempts]);
 
@@ -126,8 +117,6 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
         studentEmail: string;
         attempts: number;
         totalScore: number;
-        totalTime: number;
-        totalQuestions: number;
         lastAttemptAt: string;
       }
     >();
@@ -141,15 +130,11 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
           studentEmail: attempt.studentEmail,
           attempts: 1,
           totalScore: attempt.score,
-          totalTime: attempt.durationMs ?? 0,
-          totalQuestions: attempt.answerCount,
           lastAttemptAt: attempt.startedAt,
         });
       } else {
         existing.attempts += 1;
         existing.totalScore += attempt.score;
-        existing.totalTime += attempt.durationMs ?? 0;
-        existing.totalQuestions += attempt.answerCount;
         if (new Date(attempt.startedAt) > new Date(existing.lastAttemptAt)) {
           existing.lastAttemptAt = attempt.startedAt;
         }
@@ -160,8 +145,6 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
       .map((entry) => ({
         ...entry,
         averageScore: entry.totalScore / entry.attempts,
-        averageTimePerQuestion:
-          entry.totalQuestions > 0 ? entry.totalTime / entry.totalQuestions / 1000 : 0,
       }))
       .sort((a, b) => b.averageScore - a.averageScore);
   }, [filteredAttempts]);
@@ -171,7 +154,6 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
     Email: row.studentEmail,
     Attempts: row.attempts,
     "Average Score": row.averageScore.toFixed(2),
-    "Average Time (seconds)": row.averageTimePerQuestion.toFixed(2),
     "Last Attempt": new Date(row.lastAttemptAt).toLocaleString(),
   }));
 
@@ -193,11 +175,11 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
       <header>
         <h1 className="text-2xl font-semibold">รายงานภาพรวม</h1>
         <p className="text-sm text-muted-foreground">
-          โน้ตดีพลอย: ใช้ฟิลเตอร์ให้เหมาะ แล้วจับตาค่าเฉลี่ยเวลาต่อข้อเพื่อรู้ว่านักเรียนติดตรงไหน
+          ใช้ฟิลเตอร์เพื่อดูภาพรวมผลการทำข้อสอบของนักเรียนตามวิชา ช่วงเวลา หรือคำค้นหา
         </p>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>จำนวน Attempt</CardTitle>
@@ -214,17 +196,6 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold">{stats.averageScore.toFixed(2)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>เวลาเฉลี่ยต่อข้อ</CardTitle>
-            <CardDescription>คาดการณ์จากเวลาที่บันทึก</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold">
-              {stats.averageTimePerQuestion > 0 ? formatSeconds(stats.averageTimePerQuestion) : "—"}
-            </p>
           </CardContent>
         </Card>
       </div>
@@ -265,15 +236,13 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
         <Button variant="outline" onClick={() => handleExport("xls")} disabled={groupedByStudent.length === 0}>
           Export Excel
         </Button>
-        <Badge variant="secondary">
-          นักเรียนที่พบ {groupedByStudent.length} คน
-        </Badge>
+        <Badge variant="secondary">นักเรียนที่พบ {groupedByStudent.length} คน</Badge>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>ภาพรวมตามนักเรียน</CardTitle>
-          <CardDescription>รวม Attempt, คะแนนเฉลี่ย, และเวลาเฉลี่ยต่อข้อ</CardDescription>
+          <CardDescription>รวม Attempt, คะแนนเฉลี่ย และ Attempt ล่าสุด</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
@@ -283,7 +252,6 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
                 <th className="px-3 py-2 font-medium">อีเมล</th>
                 <th className="px-3 py-2 font-medium">จำนวน Attempt</th>
                 <th className="px-3 py-2 font-medium">คะแนนเฉลี่ย</th>
-                <th className="px-3 py-2 font-medium">เวลาเฉลี่ยต่อข้อ</th>
                 <th className="px-3 py-2 font-medium">Attempt ล่าสุด</th>
               </tr>
             </thead>
@@ -296,11 +264,6 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
                   <td className="px-3 py-2 text-muted-foreground">{row.studentEmail}</td>
                   <td className="px-3 py-2">{row.attempts}</td>
                   <td className="px-3 py-2">{row.averageScore.toFixed(2)}</td>
-                  <td className="px-3 py-2">
-                    {row.averageTimePerQuestion > 0
-                      ? formatSeconds(row.averageTimePerQuestion)
-                      : "—"}
-                  </td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {new Date(row.lastAttemptAt).toLocaleString()}
                   </td>
@@ -308,7 +271,7 @@ export const TeacherReportsDashboard = ({ data }: TeacherReportsDashboardProps) 
               ))}
               {groupedByStudent.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                  <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
                     ยังไม่มีข้อมูลตามเงื่อนไขที่เลือก
                   </td>
                 </tr>

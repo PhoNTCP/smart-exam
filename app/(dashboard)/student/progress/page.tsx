@@ -17,7 +17,11 @@ export default async function StudentProgressPage() {
   const attempts = await prisma.examAttempt.findMany({
     where: { userId: user.id },
     include: {
-      exam: true,
+      exam: {
+        include: {
+          subjectRef: true,
+        },
+      },
       answers: {
         include: {
           question: {
@@ -38,6 +42,7 @@ export default async function StudentProgressPage() {
   const latestAttempt = attempts[0]
     ? {
         examTitle: attempts[0].exam.title,
+        subjectName: attempts[0].exam.subjectRef?.name ?? "ไม่ระบุ",
         finishedAt: attempts[0].finishedAt?.toISOString() ?? null,
         startedAt: attempts[0].startedAt.toISOString(),
         score: attempts[0].score,
@@ -55,25 +60,28 @@ export default async function StudentProgressPage() {
       }
     : null;
 
-  const chartData = [...attempts]
-    .reverse()
-    .map((attempt, index) => {
-      const averageDifficulty =
-        attempt.answers.length > 0
-          ? attempt.answers.reduce((sum, answer) => {
-              const difficulty = answer.question.aiScores[0]?.difficulty ?? 3;
-              return sum + difficulty;
-            }, 0) / attempt.answers.length
-          : null;
-      return {
-        id: attempt.id,
-        label: `ครั้งที่ ${index + 1}`,
-        score: attempt.score,
-        averageDifficulty,
-        thetaEnd: toNumber(attempt.thetaEnd),
-        startedAt: attempt.startedAt.toISOString(),
-      };
-    });
+  const chartData = [...attempts].reverse().map((attempt, index) => {
+    const averageDifficulty =
+      attempt.answers.length > 0
+        ? attempt.answers.reduce((sum, answer) => {
+            const difficulty = answer.question.aiScores[0]?.difficulty ?? 3;
+            return sum + difficulty;
+          }, 0) / attempt.answers.length
+        : null;
+
+    return {
+      id: attempt.id,
+      label: `ครั้งที่ ${index + 1}`,
+      score: attempt.score,
+      averageDifficulty,
+      thetaEnd: toNumber(attempt.thetaEnd),
+      startedAt: attempt.startedAt.toISOString(),
+      subjectName: attempt.exam.subjectRef?.name ?? "ไม่ระบุ",
+      examTitle: attempt.exam.title,
+      answered: attempt.answers.length,
+      isAdaptive: attempt.exam.isAdaptive,
+    };
+  });
 
   const totals = attempts.reduce(
     (acc, attempt) => {
@@ -94,6 +102,7 @@ export default async function StudentProgressPage() {
   const attemptCards = attempts.map((attempt) => ({
     id: attempt.id,
     examTitle: attempt.exam.title,
+    subjectName: attempt.exam.subjectRef?.name ?? "ไม่ระบุ",
     status: attempt.finishedAt ? ("completed" as const) : ("in-progress" as const),
     score: attempt.score,
     thetaStart: toNumber(attempt.thetaStart),
@@ -102,6 +111,10 @@ export default async function StudentProgressPage() {
     answered: attempt.answers.length,
     isAdaptive: attempt.exam.isAdaptive,
   }));
+
+  const subjects = Array.from(
+    new Set(attempts.map((attempt) => attempt.exam.subjectRef?.name ?? "ไม่ระบุ")),
+  ).sort();
 
   return (
     <StudentProgressDashboard
@@ -114,6 +127,7 @@ export default async function StudentProgressPage() {
         latestAttempt,
         chartData,
         attempts: attemptCards,
+        subjects,
       }}
     />
   );

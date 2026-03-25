@@ -39,10 +39,11 @@ export async function PUT(request: Request, { params }: RouteParams) {
     if (!session?.user || session.user.role !== "teacher" || !session.user.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
     }
+    const teacherId = session.user.id;
 
     const { examId } = await params;
     const exam = await prisma.exam.findFirst({
-      where: { id: examId, createdById: session.user.id },
+      where: { id: examId, createdById: teacherId },
       include: {
         subjectRef: true,
         _count: { select: { attempts: true } },
@@ -60,7 +61,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
     let subjectName = exam.subjectRef?.name ?? "";
     if (payload.subjectId && payload.subjectId !== exam.subjectId) {
       const subject = await prisma.subject.findFirst({
-        where: { id: payload.subjectId, createdById: session.user.id },
+        where: { id: payload.subjectId, createdById: teacherId },
         select: { id: true, name: true },
       });
       if (!subject) {
@@ -93,7 +94,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
           tx,
           {
             examId: result.id,
-            teacherId: session.user.id,
+            teacherId,
             subjectName: result.subjectRef?.name ?? subjectName,
             questionCount: result.questionCount,
           },
@@ -143,10 +144,11 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     if (!session?.user || session.user.role !== "teacher" || !session.user.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
     }
+    const teacherId = session.user.id;
 
     const { examId } = await params;
     const exam = await prisma.exam.findFirst({
-      where: { id: examId, createdById: session.user.id },
+      where: { id: examId, createdById: teacherId },
       select: { id: true },
     });
 

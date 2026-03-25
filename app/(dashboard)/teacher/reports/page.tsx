@@ -2,11 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { authGuard } from "@/lib/auth-guard";
 import { TeacherReportsDashboard } from "@/components/teacher/reports-dashboard";
 
-const toDurationMs = (startedAt: Date, finishedAt?: Date | null) => {
-  const end = finishedAt ?? new Date();
-  return Math.max(0, end.getTime() - startedAt.getTime());
-};
-
 export default async function TeacherReportsPage() {
   const user = await authGuard("teacher");
 
@@ -45,7 +40,6 @@ export default async function TeacherReportsPage() {
     answerCount: attempt.answers.length,
     startedAt: attempt.startedAt.toISOString(),
     finishedAt: attempt.finishedAt?.toISOString() ?? null,
-    durationMs: attempt.answers.length > 0 ? toDurationMs(attempt.startedAt, attempt.finishedAt) : null,
   }));
 
   return (

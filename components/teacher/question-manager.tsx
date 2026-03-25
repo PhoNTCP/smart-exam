@@ -36,29 +36,28 @@ type QuestionResponse = {
   grades: string[];
 };
 
-const gradeOptions = [
-  "P1",
-  "P2",
-  "P3",
-  "P4",
-  "P5",
-  "P6",
-  "M1",
-  "M2",
-  "M3",
-  "M4",
-  "M5",
-  "M6",
-  "U1",
-  "U2",
-  "U3",
-  "U4",
-  "U5",
-  "U6",
-  "UNSPECIFIED",
-] as const;
+type GradeOption =
+  | "P1"
+  | "P2"
+  | "P3"
+  | "P4"
+  | "P5"
+  | "P6"
+  | "M1"
+  | "M2"
+  | "M3"
+  | "M4"
+  | "M5"
+  | "M6"
+  | "U1"
+  | "U2"
+  | "U3"
+  | "U4"
+  | "U5"
+  | "U6"
+  | "UNSPECIFIED";
 
-const gradeLabel = (value: (typeof gradeOptions)[number]) => {
+const gradeLabel = (value: GradeOption) => {
     if (value === "UNSPECIFIED") return "ไม่ระบุ";
   switch (value[0]) {
     case "P":
@@ -267,8 +266,8 @@ export const QuestionManager = () => {
         header: "ระดับชั้น",
         accessorKey: "gradeLevel",
         cell: ({ getValue }) => {
-          const val = getValue() as (typeof gradeOptions)[number] | string;
-          return <span>{gradeLabel(val as (typeof gradeOptions)[number])}</span>;
+          const val = getValue() as GradeOption | string;
+          return <span>{gradeLabel(val as GradeOption)}</span>;
         },
       },
       {

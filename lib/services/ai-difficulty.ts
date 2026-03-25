@@ -18,7 +18,7 @@ const extractGradeLevel = (gradeLevel: string) => {
   return match ? Number(match[0]) : null;
 };
 
-const heuristicScore = (input: ScoreInput, provider?: string): ScoreResult => {
+const heuristicScore = (input: ScoreInput): ScoreResult => {
   const wordCount = input.body.split(/\s+/).filter(Boolean).length;
   const gradeLevel = extractGradeLevel(input.gradeLevel);
   const subjectHint =
@@ -104,10 +104,10 @@ export const scoreWithAI = async (input: ScoreInput): Promise<ScoreResult> => {
       }
 
       console.warn("Gemini response missing expected fields, fallback to heuristic");
-      return heuristicScore(input, provider);
+      return heuristicScore(input);
     } catch (error) {
       console.error("Gemini scoring failed, fallback to heuristic", error);
-      return heuristicScore(input, provider);
+      return heuristicScore(input);
     }
   }
 
@@ -115,5 +115,5 @@ export const scoreWithAI = async (input: ScoreInput): Promise<ScoreResult> => {
     console.warn("Gemini provider selected but GEMINI_API_KEY is missing. Using heuristic fallback.");
   }
 
-  return heuristicScore(input, provider);
+  return heuristicScore(input);
 };

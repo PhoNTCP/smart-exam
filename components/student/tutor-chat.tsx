@@ -118,7 +118,7 @@ export const TutorChat = ({ attemptId, questionId, className, autoPrompt, onAuto
       setPending(false);
       setSending(false);
     }
-  }, [attemptId, isContextual, isSending, pending, questionId, input, setSending]);
+  }, [attemptId, isBlocked, isContextual, isSending, pending, questionId, input, setSending]);
 
   useEffect(() => {
     if (!autoPrompt || isBlocked) {
@@ -147,7 +147,7 @@ export const TutorChat = ({ attemptId, questionId, className, autoPrompt, onAuto
     return () => {
       cancelled = true;
     };
-  }, [autoPrompt, onAutoPromptConsumed, sendMessage]);
+  }, [autoPrompt, isBlocked, onAutoPromptConsumed, sendMessage]);
 
   return (
     <div className={cn("flex h-full flex-col rounded-lg border bg-card shadow-sm", className)}>

@@ -69,6 +69,13 @@ type StandardQuestion = {
   difficulty: number | null;
 };
 
+type StandardQuestionApiItem = {
+  id: string;
+  body: string;
+  gradeLevel: string;
+  difficulty?: number | null;
+};
+
 type AssignmentRow = {
   id: string;
   examId: string;
@@ -339,7 +346,7 @@ export const SubjectDetail = ({
     if (!response.ok) {
       throw new Error(json.message ?? "ไม่สามารถโหลดคลังคำถามได้");
     }
-    const questions: StandardQuestion[] = (json.data ?? []).map((item: any) => ({
+    const questions: StandardQuestion[] = (json.data ?? []).map((item: StandardQuestionApiItem) => ({
       id: item.id,
       body: item.body,
       gradeLevel: item.gradeLevel,
@@ -354,7 +361,7 @@ export const SubjectDetail = ({
     if (!response.ok) {
       throw new Error(json.message ?? "ไม่สามารถโหลดชุดคำถามเดิมได้");
     }
-    const questions: StandardQuestion[] = (json.data ?? []).map((item: any) => ({
+    const questions: StandardQuestion[] = (json.data ?? []).map((item: StandardQuestionApiItem) => ({
       id: item.id,
       body: item.body,
       gradeLevel: item.gradeLevel,

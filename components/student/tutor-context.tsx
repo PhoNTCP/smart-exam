@@ -73,6 +73,7 @@ export const TutorChatProvider = ({ children }: { children: ReactNode }) => {
       setContext,
       setOpen,
       state.attemptId,
+      state.examMode,
       state.questionId,
     ],
   );
