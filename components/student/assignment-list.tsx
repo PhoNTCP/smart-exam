@@ -2,8 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type AssignmentStatus = "ASSIGNED" | "IN_PROGRESS" | "COMPLETED";
 
@@ -16,7 +23,10 @@ type StudentAssignmentRow = {
   assignedAt: string;
   startAt: string | null;
   dueAt: string | null;
+  completedAt: string | null;
   attemptId: string | null;
+  score: number | null;
+  totalQuestions: number;
 };
 
 type StudentAssignmentListProps = {
@@ -26,7 +36,7 @@ type StudentAssignmentListProps = {
 const statusLabel: Record<AssignmentStatus, string> = {
   ASSIGNED: "ยังไม่เริ่ม",
   IN_PROGRESS: "กำลังทำ",
-  COMPLETED: "เสร็จแล้ว",
+  COMPLETED: "สำเร็จ",
 };
 
 const statusVariant: Record<AssignmentStatus, "default" | "secondary" | "outline"> = {
@@ -42,20 +52,28 @@ const formatDateTime = (iso: string | null) => {
   return date.toLocaleString();
 };
 
+const formatScore = (score: number | null, totalQuestions: number) => {
+  if (score == null) return "-";
+  return `${score}/${totalQuestions}`;
+};
+
 export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentListProps) => {
   const router = useRouter();
   const [assignments, setAssignments] = useState(initialAssignments);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<StudentAssignmentRow | null>(null);
 
   const handleStart = async (assignmentId: string) => {
     const target = assignments.find((item) => item.id === assignmentId);
-    if (!target) {
-      return;
-    }
+    if (!target) return;
 
     if (target.status === "COMPLETED") {
-      setFeedback({ type: "error", message: "ข้อสอบชุดนี้ทำเสร็จแล้ว" });
+      if (target.attemptId) {
+        router.push(`/student/exams/${target.attemptId}`);
+      } else {
+        setFeedback({ type: "error", message: "งานนี้ทำเสร็จแล้ว" });
+      }
       return;
     }
 
@@ -91,11 +109,16 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
         setAssignments((prev) =>
           prev.map((item) =>
             item.id === assignmentId
-              ? { ...item, status: "COMPLETED", attemptId: json.attemptId ?? item.attemptId }
+              ? {
+                  ...item,
+                  status: "COMPLETED",
+                  attemptId: json.attemptId ?? item.attemptId,
+                  score: json.summary?.score ?? item.score,
+                }
               : item,
           ),
         );
-        setFeedback({ type: "success", message: "ข้อสอบชุดนี้ทำเสร็จแล้ว" });
+        setFeedback({ type: "success", message: "งานนี้ทำเสร็จแล้ว" });
         return;
       }
 
@@ -131,7 +154,7 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
         <p className="text-sm text-muted-foreground">ยังไม่มีงานที่ได้รับในขณะนี้</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">วิชา</th>
@@ -139,7 +162,9 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
                 <th className="px-3 py-2 font-medium">สถานะ</th>
                 <th className="px-3 py-2 font-medium">เริ่มได้</th>
                 <th className="px-3 py-2 font-medium">กำหนดส่ง</th>
-                <th className="px-3 py-2 font-medium">การจัดการ</th>
+                <th className="px-3 py-2 font-medium">คะแนน</th>
+                <th className="px-3 py-2 font-medium">ทำเสร็จเมื่อ</th>
+                <th className="px-3 py-2 font-medium">จัดการ</th>
               </tr>
             </thead>
             <tbody>
@@ -150,10 +175,10 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
                   assignment.status === "ASSIGNED" && isValidStart != null && isValidStart.getTime() > now;
                 const isLoading = loadingId === assignment.id;
                 const isCompleted = assignment.status === "COMPLETED";
-                const buttonDisabled = isCompleted || isLoading || isFutureStart;
+                const buttonDisabled = isLoading || isFutureStart;
                 const buttonLabel =
                   assignment.status === "COMPLETED"
-                    ? "เสร็จแล้ว"
+                    ? "สำเร็จแล้ว"
                     : isLoading
                       ? assignment.status === "IN_PROGRESS"
                         ? "กำลังเปิด..."
@@ -176,19 +201,37 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.startAt)}</td>
                     <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.dueAt)}</td>
+                    <td className="px-3 py-2">{formatScore(assignment.score, assignment.totalQuestions)}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.completedAt)}</td>
                     <td className="px-3 py-2">
-                      <Button
-                        size="sm"
-                        onClick={() => handleStart(assignment.id)}
-                        disabled={buttonDisabled}
-                        title={
-                          isFutureStart && isValidStart
-                            ? `จะเริ่มได้หลังจาก ${isValidStart.toLocaleString()}`
-                            : undefined
-                        }
-                      >
-                        {buttonLabel}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        {!isCompleted ? (
+                          <Button
+                            size="sm"
+                            onClick={() => handleStart(assignment.id)}
+                            disabled={buttonDisabled}
+                            title={
+                              isFutureStart && isValidStart
+                                ? `จะเริ่มได้หลังจาก ${isValidStart.toLocaleString()}`
+                                : undefined
+                            }
+                          >
+                            {buttonLabel}
+                          </Button>
+                        ) : null}
+                        <Button size="sm" variant="outline" onClick={() => setSelectedAssignment(assignment)}>
+                          ดูรายละเอียด
+                        </Button>
+                        {assignment.attemptId && assignment.status !== "COMPLETED" ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => router.push(`/student/exams/${assignment.attemptId}`)}
+                          >
+                            เปิดข้อสอบ
+                          </Button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -197,6 +240,55 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
           </table>
         </div>
       )}
+
+      <Dialog open={selectedAssignment != null} onOpenChange={(open) => !open && setSelectedAssignment(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>รายละเอียดงานที่ได้รับ</DialogTitle>
+            <DialogDescription>
+              {selectedAssignment ? `${selectedAssignment.subjectName} (${selectedAssignment.subjectCode})` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAssignment ? (
+            <div className="space-y-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">ข้อสอบ</p>
+                <p className="font-medium">{selectedAssignment.examTitle}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">สถานะ</p>
+                <Badge variant={statusVariant[selectedAssignment.status]}>{statusLabel[selectedAssignment.status]}</Badge>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-muted-foreground">วันที่ได้รับ</p>
+                  <p>{formatDateTime(selectedAssignment.assignedAt)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">เริ่มได้</p>
+                  <p>{formatDateTime(selectedAssignment.startAt)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">กำหนดส่ง</p>
+                  <p>{formatDateTime(selectedAssignment.dueAt)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">ทำเสร็จเมื่อ</p>
+                  <p>{formatDateTime(selectedAssignment.completedAt)}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-muted-foreground">ผลลัพธ์</p>
+                <p className="font-medium">
+                  {selectedAssignment.score != null
+                    ? `คะแนน ${selectedAssignment.score}/${selectedAssignment.totalQuestions}`
+                    : "ยังไม่มีผลลัพธ์"}
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

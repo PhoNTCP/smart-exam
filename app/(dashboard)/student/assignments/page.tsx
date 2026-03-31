@@ -9,12 +9,18 @@ export default async function StudentAssignmentsPage() {
   const assignments = await prisma.studentExam.findMany({
     where: { studentId: user.id },
     include: {
+      attempt: {
+        select: {
+          score: true,
+        },
+      },
       assignment: {
         include: {
           exam: {
             select: {
               id: true,
               title: true,
+              questionCount: true,
             },
           },
           subject: {
@@ -39,7 +45,10 @@ export default async function StudentAssignmentsPage() {
     assignedAt: link.assignedAt.toISOString(),
     startAt: link.assignment.startAt ? link.assignment.startAt.toISOString() : null,
     dueAt: link.assignment.dueAt ? link.assignment.dueAt.toISOString() : null,
+    completedAt: link.completedAt ? link.completedAt.toISOString() : null,
     attemptId: link.attemptId,
+    score: link.attempt?.score ?? null,
+    totalQuestions: link.assignment.exam.questionCount,
   }));
 
   return (
@@ -48,7 +57,7 @@ export default async function StudentAssignmentsPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">งานที่ได้รับ</h1>
           <p className="text-sm text-muted-foreground">
-            ดูรายการข้อสอบที่ครูมอบหมายให้คุณ พร้อมเริ่มทำได้ทันที
+            ดูรายการข้อสอบที่ครูมอบหมายให้คุณ พร้อมสถานะ ผลลัพธ์ และรายละเอียดการทำย้อนหลัง
           </p>
         </div>
         <Badge className="self-start sm:self-auto" variant="outline">

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -155,6 +155,7 @@ type AssignmentFormState = {
   examId: string;
   startAt: string;
   dueAt: string;
+  studentIds: string[];
 };
 
 export const SubjectDetail = ({
@@ -177,10 +178,12 @@ export const SubjectDetail = ({
   const [examForm, setExamForm] = useState<ExamFormState>({ ...DEFAULT_EXAM_FORM });
   const [examSubmitting, setExamSubmitting] = useState(false);
   const [assignmentSubmitting, setAssignmentSubmitting] = useState(false);
+  const [assignmentStudentPickerOpen, setAssignmentStudentPickerOpen] = useState(false);
   const [assignmentForm, setAssignmentForm] = useState<AssignmentFormState>({
     examId: initialExams[0]?.id ?? "",
     startAt: "",
     dueAt: "",
+    studentIds: initialStudents.map((student) => student.userId),
   });
   const [assignmentDetailOpen, setAssignmentDetailOpen] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentRow | null>(null);
@@ -191,12 +194,37 @@ export const SubjectDetail = ({
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [savingQuestions, setSavingQuestions] = useState(false);
   const [questionPickerMode, setQuestionPickerMode] = useState<"create" | "existing">("existing");
+  const previousStudentIdsRef = useRef(initialStudents.map((student) => student.userId));
+  const allStudentIds = useMemo(() => students.map((student) => student.userId), [students]);
 
   const completionRate = useMemo(() => {
     if (summaryState.totalAttempts === 0) return "0%";
     const rate = (summaryState.completedAttempts / summaryState.totalAttempts) * 100;
     return `${rate.toFixed(1)}%`;
   }, [summaryState]);
+  const selectedAssignmentStudents = useMemo(
+    () => students.filter((student) => assignmentForm.studentIds.includes(student.userId)),
+    [assignmentForm.studentIds, students],
+  );
+
+  useEffect(() => {
+    const previousStudentIds = previousStudentIdsRef.current;
+
+    setAssignmentForm((prev) => {
+      const selectedSet = new Set(prev.studentIds);
+      const hadAllSelected =
+        previousStudentIds.length > 0 && previousStudentIds.every((studentId) => selectedSet.has(studentId));
+
+      return {
+        ...prev,
+        studentIds: hadAllSelected
+          ? allStudentIds
+          : prev.studentIds.filter((studentId) => allStudentIds.includes(studentId)),
+      };
+    });
+
+    previousStudentIdsRef.current = allStudentIds;
+  }, [allStudentIds]);
 
   const handleEnroll = async () => {
     if (!enrollEmail) {
@@ -336,6 +364,38 @@ export const SubjectDetail = ({
   const handleOpenAssignmentDetails = (assignment: AssignmentRow) => {
     setSelectedAssignment(assignment);
     setAssignmentDetailOpen(true);
+  };
+
+  const handleDeleteAssignment = async (assignmentId: string) => {
+    setFeedback(null);
+    try {
+      const response = await fetch("/api/assignments", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignmentId }),
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json.message ?? "ไม่สามารถลบงานที่มอบหมายได้");
+      }
+
+      setAssignments((prev) => prev.filter((assignment) => assignment.id !== assignmentId));
+      setSummaryState((prev) => ({
+        ...prev,
+        assignmentCount: Math.max(prev.assignmentCount - 1, 0),
+      }));
+      if (selectedAssignment?.id === assignmentId) {
+        setSelectedAssignment(null);
+        setAssignmentDetailOpen(false);
+      }
+      setFeedback({ type: "success", message: "ลบงานที่มอบหมายเรียบร้อย" });
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "ไม่สามารถลบงานที่มอบหมายได้",
+      });
+    }
   };
 
   const loadQuestionPool = async () => {
@@ -625,9 +685,13 @@ export const SubjectDetail = ({
       setExamSubmitting(false);
     }
   };
-const handleCreateAssignment = async () => {
+  const handleCreateAssignment = async () => {
     if (!assignmentForm.examId) {
       setFeedback({ type: "error", message: "กรุณาเลือกข้อสอบก่อน" });
+      return;
+    }
+    if (assignmentForm.studentIds.length === 0) {
+      setFeedback({ type: "error", message: "กรุณาเลือกนักเรียนอย่างน้อย 1 คน" });
       return;
     }
     setAssignmentSubmitting(true);
@@ -636,6 +700,7 @@ const handleCreateAssignment = async () => {
       const payload: Record<string, unknown> = {
         examId: assignmentForm.examId,
         subjectId: subject.id,
+        studentIds: assignmentForm.studentIds,
       };
       if (assignmentForm.startAt) {
         payload.startAt = new Date(assignmentForm.startAt).toISOString();
@@ -663,15 +728,17 @@ const handleCreateAssignment = async () => {
         createdAt: json.data.createdAt,
         assignedCount: json.data.assignedCount,
         completedCount: json.data.completedCount,
-        students: students.map((student) => ({
-          studentId: student.userId,
-          studentName: student.name,
-          studentEmail: student.email,
-          status: "ASSIGNED",
-          attemptId: null,
-          score: null,
-          completedAt: null,
-        })),
+        students: students
+          .filter((student) => assignmentForm.studentIds.includes(student.userId))
+          .map((student) => ({
+            studentId: student.userId,
+            studentName: student.name,
+            studentEmail: student.email,
+            status: "ASSIGNED",
+            attemptId: null,
+            score: null,
+            completedAt: null,
+          })),
       };
 
       setAssignments((prev) => [newAssignment, ...prev]);
@@ -1141,8 +1208,46 @@ const handleCreateAssignment = async () => {
                     }
                   />
                 </div>
+                <div className="space-y-3 md:col-span-2">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">ผู้รับมอบหมาย</label>
+                    <p className="text-xs text-muted-foreground">
+                      เลือกได้ว่าจะมอบหมายให้ใครบ้าง ตอนนี้เลือกแล้ว {assignmentForm.studentIds.length} คน
+                    </p>
+                  </div>
+                  <div className="rounded-md border p-3">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">
+                          {assignmentForm.studentIds.length === students.length && students.length > 0
+                            ? "เลือกนักเรียนทั้งหมด"
+                            : `เลือกแล้ว ${assignmentForm.studentIds.length} คน`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {selectedAssignmentStudents.length === 0
+                            ? "ยังไม่ได้เลือกนักเรียน"
+                            : selectedAssignmentStudents
+                                .slice(0, 3)
+                                .map((student) => student.name ?? student.email)
+                                .join(", ")}
+                          {selectedAssignmentStudents.length > 3
+                            ? ` และอีก ${selectedAssignmentStudents.length - 3} คน`
+                            : ""}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setAssignmentStudentPickerOpen(true)}
+                        disabled={students.length === 0}
+                      >
+                        เลือกนักเรียน
+                      </Button>
+                    </div>
+                  </div>
+                </div>
                 <div className="flex items-end">
-                  <Button onClick={handleCreateAssignment} disabled={assignmentSubmitting}>
+                  <Button onClick={handleCreateAssignment} disabled={assignmentSubmitting || students.length === 0}>
                     {assignmentSubmitting ? "กำลังสร้าง..." : "สร้างงานที่มอบหมาย"}
                   </Button>
                 </div>
@@ -1161,7 +1266,7 @@ const handleCreateAssignment = async () => {
                       <th className="px-3 py-2 font-medium">สิ้นสุด</th>
                       <th className="px-3 py-2 font-medium">มอบหมายแล้ว</th>
                       <th className="px-3 py-2 font-medium">ทำเสร็จแล้ว</th>
-                      <th className="px-3 py-2 font-medium">คะแนน</th>
+                      <th className="px-3 py-2 font-medium">จัดการ</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1177,13 +1282,39 @@ const handleCreateAssignment = async () => {
                         <td className="px-3 py-2">{assignment.assignedCount}</td>
                         <td className="px-3 py-2">{assignment.completedCount}</td>
                         <td className="px-3 py-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenAssignmentDetails(assignment)}
-                          >
-                            ดูรายละเอียด
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenAssignmentDetails(assignment)}
+                            >
+                              ดูรายละเอียด
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                                  ลบ
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>ยืนยันการลบงานที่มอบหมาย</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    การลบจะยกเลิกการมอบหมายงานนี้ให้กับนักเรียนทั้งหมดในรายการ
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-destructive hover:bg-destructive/90"
+                                    onClick={() => handleDeleteAssignment(assignment.id)}
+                                  >
+                                    ยืนยัน
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1194,6 +1325,81 @@ const handleCreateAssignment = async () => {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={assignmentStudentPickerOpen} onOpenChange={setAssignmentStudentPickerOpen}>
+        <DialogContent className="max-h-[80vh] sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>เลือกนักเรียนสำหรับงานมอบหมาย</DialogTitle>
+            <DialogDescription>
+              เลือกได้ว่าจะมอบหมายข้อสอบนี้ให้ใครบ้างในวิชา {subject.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAssignmentForm((prev) => ({ ...prev, studentIds: allStudentIds }))}
+                disabled={students.length === 0}
+              >
+                เลือกทั้งหมด
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setAssignmentForm((prev) => ({ ...prev, studentIds: [] }))}
+                disabled={students.length === 0}
+              >
+                ล้างทั้งหมด
+              </Button>
+              <p className="self-center text-xs text-muted-foreground">
+                เลือกแล้ว {assignmentForm.studentIds.length} จาก {students.length} คน
+              </p>
+            </div>
+            <div className="max-h-96 space-y-2 overflow-y-auto rounded-md border p-3">
+              {students.length === 0 ? (
+                <p className="text-sm text-muted-foreground">ยังไม่มีนักเรียนในรายวิชานี้</p>
+              ) : (
+                students.map((student) => {
+                  const isSelected = assignmentForm.studentIds.includes(student.userId);
+
+                  return (
+                    <label
+                      key={student.userId}
+                      className="flex cursor-pointer items-start gap-3 rounded-md border border-transparent px-2 py-2 hover:border-border hover:bg-muted/40"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 rounded border-input"
+                        checked={isSelected}
+                        onChange={(event) =>
+                          setAssignmentForm((prev) => ({
+                            ...prev,
+                            studentIds: event.target.checked
+                              ? [...prev.studentIds, student.userId]
+                              : prev.studentIds.filter((studentId) => studentId !== student.userId),
+                          }))
+                        }
+                      />
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">{student.name ?? "ไม่ระบุชื่อ"}</p>
+                        <p className="text-xs text-muted-foreground">{student.email}</p>
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+            <div className="flex justify-end">
+              <Button type="button" onClick={() => setAssignmentStudentPickerOpen(false)}>
+                เสร็จสิ้น
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={questionPickerOpen}

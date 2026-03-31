@@ -8,6 +8,11 @@ const createAssignmentSchema = z.object({
   subjectId: z.string().cuid("รหัสวิชาไม่ถูกต้อง"),
   startAt: z.coerce.date().optional(),
   dueAt: z.coerce.date().nullable().optional(),
+  studentIds: z.array(z.string().cuid()).optional(),
+});
+
+const deleteAssignmentSchema = z.object({
+  assignmentId: z.string().cuid("รหัสงานที่มอบหมายไม่ถูกต้อง"),
 });
 
 export async function POST(request: Request) {
@@ -39,13 +44,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "ไม่พบข้อสอบ" }, { status: 404 });
     }
     if (exam.subjectId !== subject.id) {
-      return NextResponse.json({ message: "ข้อสอบไม่ได้อยู่ในวิชานี้" }, { status: 400 });
+      return NextResponse.json({ message: "ข้อสอบนี้ไม่ได้อยู่ในวิชานี้" }, { status: 400 });
     }
 
     const enrollments = await prisma.subjectEnrollment.findMany({
       where: { subjectId: subject.id },
       select: { userId: true },
     });
+
+    const enrolledStudentIds = new Set(enrollments.map((enrollment) => enrollment.userId));
+    const targetStudentIds = payload.studentIds?.length
+      ? payload.studentIds.filter((studentId) => enrolledStudentIds.has(studentId))
+      : enrollments.map((enrollment) => enrollment.userId);
+
+    if (targetStudentIds.length === 0) {
+      return NextResponse.json({ message: "กรุณาเลือกนักเรียนอย่างน้อย 1 คน" }, { status: 400 });
+    }
 
     const startAt = payload.startAt ?? new Date();
     const dueAt = payload.dueAt ?? null;
@@ -61,15 +75,13 @@ export async function POST(request: Request) {
         },
       });
 
-      if (enrollments.length > 0) {
-        await tx.studentExam.createMany({
-          data: enrollments.map((enrollment) => ({
-            assignmentId: created.id,
-            studentId: enrollment.userId,
-          })),
-          skipDuplicates: true,
-        });
-      }
+      await tx.studentExam.createMany({
+        data: targetStudentIds.map((studentId) => ({
+          assignmentId: created.id,
+          studentId,
+        })),
+        skipDuplicates: true,
+      });
 
       return created;
     });
@@ -114,5 +126,44 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "ข้อมูลไม่ถูกต้อง", issues: error.flatten() }, { status: 422 });
     }
     return NextResponse.json({ message: "ไม่สามารถสร้างการมอบหมายได้" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await auth();
+    if (!session?.user || session.user.role !== "teacher" || !session.user.id) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
+    }
+    const teacherId = session.user.id;
+
+    const body = await request.json();
+    const payload = deleteAssignmentSchema.parse(body);
+
+    const assignment = await prisma.examAssignment.findFirst({
+      where: {
+        id: payload.assignmentId,
+        assignedBy: teacherId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!assignment) {
+      return NextResponse.json({ message: "ไม่พบงานที่มอบหมาย" }, { status: 404 });
+    }
+
+    await prisma.examAssignment.delete({
+      where: { id: assignment.id },
+    });
+
+    return NextResponse.json({ message: "ลบงานที่มอบหมายเรียบร้อย" });
+  } catch (error) {
+    console.error(error);
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ message: "ข้อมูลไม่ถูกต้อง", issues: error.flatten() }, { status: 422 });
+    }
+    return NextResponse.json({ message: "ไม่สามารถลบงานที่มอบหมายได้" }, { status: 500 });
   }
 }

@@ -12,10 +12,15 @@ export async function GET() {
     const links = await prisma.studentExam.findMany({
       where: { studentId: session.user.id },
       include: {
+        attempt: {
+          select: {
+            score: true,
+          },
+        },
         assignment: {
           include: {
             exam: {
-              select: { id: true, title: true },
+              select: { id: true, title: true, questionCount: true },
             },
             subject: {
               select: { id: true, name: true, code: true },
@@ -33,9 +38,11 @@ export async function GET() {
         assignedAt: link.assignedAt,
         completedAt: link.completedAt,
         attemptId: link.attemptId,
+        score: link.attempt?.score ?? null,
         exam: {
           id: link.assignment.exam.id,
           title: link.assignment.exam.title,
+          questionCount: link.assignment.exam.questionCount,
         },
         subject: {
           id: link.assignment.subject.id,

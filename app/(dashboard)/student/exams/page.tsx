@@ -9,12 +9,18 @@ export default async function StudentExamsPage() {
   const assignments = await prisma.studentExam.findMany({
     where: { studentId: user.id },
     include: {
+      attempt: {
+        select: {
+          score: true,
+        },
+      },
       assignment: {
         include: {
           exam: {
             select: {
               id: true,
               title: true,
+              questionCount: true,
             },
           },
           subject: {
@@ -30,9 +36,7 @@ export default async function StudentExamsPage() {
     orderBy: { assignedAt: "desc" },
   });
 
-  const outstanding = assignments.filter((link) => link.status !== "COMPLETED");
-
-  const serialized = outstanding.map((link) => ({
+  const serialized = assignments.map((link) => ({
     id: link.id,
     examTitle: link.assignment.exam.title,
     subjectName: link.assignment.subject.name,
@@ -41,7 +45,10 @@ export default async function StudentExamsPage() {
     assignedAt: link.assignedAt.toISOString(),
     startAt: link.assignment.startAt ? link.assignment.startAt.toISOString() : null,
     dueAt: link.assignment.dueAt ? link.assignment.dueAt.toISOString() : null,
+    completedAt: link.completedAt ? link.completedAt.toISOString() : null,
     attemptId: link.attemptId,
+    score: link.attempt?.score ?? null,
+    totalQuestions: link.assignment.exam.questionCount,
   }));
 
   return (
@@ -50,7 +57,7 @@ export default async function StudentExamsPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">ข้อสอบที่รอมอบหมาย</h1>
           <p className="text-sm text-muted-foreground">
-            เริ่มทำข้อสอบจากรายการ Assignment ที่ครูส่งให้คุณ หากไม่มีรายการ แสดงว่ายังไม่ถูกมอบหมาย
+            แสดงทั้งงานที่ยังไม่เริ่ม กำลังทำ และประวัติที่ทำเสร็จแล้ว พร้อมดูผลและรายละเอียดได้
           </p>
         </div>
         <Badge className="self-start sm:self-auto" variant="outline">
