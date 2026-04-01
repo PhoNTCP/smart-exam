@@ -58,8 +58,6 @@ type ExamRow = {
   attemptCount: number;
   completedCount: number;
   questionCount: number;
-  difficultyMin: number;
-  difficultyMax: number;
 };
 
 type StandardQuestion = {
@@ -114,14 +112,11 @@ const levelLabel = (value: string) => {
   }
 };
 
-const difficultyLevels = [1, 2, 3, 4, 5] as const;
-
 const DEFAULT_EXAM_FORM = {
   title: "",
   isAdaptive: true,
   isPublic: false,
   questionCount: 10,
-  difficultyMin: 1,
 } satisfies ExamFormState;
 
 const formatDate = (iso: string) => new Date(iso).toLocaleString();
@@ -148,7 +143,6 @@ type ExamFormState = {
   isAdaptive: boolean;
   isPublic: boolean;
   questionCount: number;
-  difficultyMin: number;
 };
 
 type AssignmentFormState = {
@@ -171,6 +165,7 @@ export const SubjectDetail = ({
   const [assignments, setAssignments] = useState<AssignmentRow[]>(initialAssignments);
   const [summaryState, setSummaryState] = useState(summary);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [examDialogFeedback, setExamDialogFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [enrollEmail, setEnrollEmail] = useState("");
   const [enrolling, setEnrolling] = useState(false);
   const [examDialogOpen, setExamDialogOpen] = useState(false);
@@ -342,6 +337,7 @@ export const SubjectDetail = ({
 
   const handleOpenCreateExam = () => {
     setFeedback(null);
+    setExamDialogFeedback(null);
     setEditingExam(null);
     setExamForm({ ...DEFAULT_EXAM_FORM });
     setSelectedStandardQuestions([]);
@@ -350,13 +346,13 @@ export const SubjectDetail = ({
 
   const handleOpenEditExam = (exam: ExamRow) => {
     setFeedback(null);
+    setExamDialogFeedback(null);
     setEditingExam(exam);
     setExamForm({
       title: exam.title,
       isAdaptive: exam.isAdaptive,
       isPublic: exam.isPublic,
       questionCount: exam.questionCount,
-      difficultyMin: exam.difficultyMin,
     });
     setExamDialogOpen(true);
   };
@@ -526,11 +522,11 @@ export const SubjectDetail = ({
 
   const validateExamForm = () => {
     if (!examForm.title.trim()) {
-      setFeedback({ type: "error", message: "กรุณากรอกชื่อข้อสอบ" });
+      setExamDialogFeedback({ type: "error", message: "กรุณากรอกชื่อข้อสอบ" });
       return false;
     }
     if (!Number.isFinite(examForm.questionCount) || examForm.questionCount <= 0) {
-      setFeedback({ type: "error", message: "จำนวนข้อสอบต้องมากกว่า 0" });
+      setExamDialogFeedback({ type: "error", message: "จำนวนข้อสอบต้องมากกว่า 0" });
       return false;
     }
     return true;
@@ -541,11 +537,11 @@ export const SubjectDetail = ({
       return;
     }
     if (!examForm.isAdaptive && selectedStandardQuestions.length === 0) {
-      setFeedback({ type: "error", message: "โปรดเลือกคำถามสำหรับข้อสอบ Standard อย่างน้อย 1 ข้อ" });
+      setExamDialogFeedback({ type: "error", message: "โปรดเลือกคำถามสำหรับข้อสอบ Standard อย่างน้อย 1 ข้อ" });
       return;
     }
     setExamSubmitting(true);
-    setFeedback(null);
+    setExamDialogFeedback(null);
     try {
       const questionCountPayload = examForm.isAdaptive
         ? examForm.questionCount
@@ -560,12 +556,12 @@ export const SubjectDetail = ({
           isAdaptive: examForm.isAdaptive,
           isPublic: examForm.isPublic,
           questionCount: questionCountPayload,
-          difficultyMin: examForm.difficultyMin,
         }),
       });
       const json = await response.json();
       if (!response.ok) {
-        throw new Error(json.message ?? "ไม่สามารถสร้างข้อสอบได้");
+        setExamDialogFeedback({ type: "error", message: json.message ?? "ไม่สามารถสร้างข้อสอบได้" });
+        return;
       }
       const newExam: ExamRow = {
         id: json.data.id,
@@ -576,8 +572,6 @@ export const SubjectDetail = ({
         attemptCount: json.data.attemptCount ?? 0,
         completedCount: 0,
         questionCount: json.data.questionCount ?? examForm.questionCount,
-        difficultyMin: json.data.difficultyMin ?? examForm.difficultyMin,
-        difficultyMax: 0
       };
 
       if (!newExam.isAdaptive && selectedStandardQuestions.length > 0) {
@@ -594,7 +588,7 @@ export const SubjectDetail = ({
           newExam.questionCount = qsJson.count ?? selectedStandardQuestions.length;
         } catch (error) {
           console.error(error);
-          setFeedback({
+          setExamDialogFeedback({
             type: "error",
             message: error instanceof Error ? error.message : "ตั้งชุดคำถามไม่สำเร็จ",
           });
@@ -613,11 +607,12 @@ export const SubjectDetail = ({
       setExamDialogOpen(false);
       setEditingExam(null);
       setExamForm({ ...DEFAULT_EXAM_FORM });
+      setExamDialogFeedback(null);
       setSelectedStandardQuestions([]);
       setFeedback({ type: "success", message: "สร้างข้อสอบเรียบร้อย" });
     } catch (error) {
       console.error(error);
-      setFeedback({
+      setExamDialogFeedback({
         type: "error",
         message: error instanceof Error ? error.message : "ไม่สามารถสร้างข้อสอบได้",
       });
@@ -634,7 +629,7 @@ export const SubjectDetail = ({
       return;
     }
     setExamSubmitting(true);
-    setFeedback(null);
+    setExamDialogFeedback(null);
     try {
       const questionCountPayload = examForm.isAdaptive
         ? examForm.questionCount
@@ -648,12 +643,12 @@ export const SubjectDetail = ({
           isAdaptive: examForm.isAdaptive,
           isPublic: examForm.isPublic,
           questionCount: questionCountPayload,
-          difficultyMin: examForm.difficultyMin,
         }),
       });
       const json = await response.json();
       if (!response.ok) {
-        throw new Error(json.message ?? "ไม่สามารถอัปเดตข้อสอบได้");
+        setExamDialogFeedback({ type: "error", message: json.message ?? "ไม่สามารถอัปเดตข้อสอบได้" });
+        return;
       }
       setExams((prev) =>
         prev.map((item) =>
@@ -664,7 +659,6 @@ export const SubjectDetail = ({
                 isAdaptive: json.data?.isAdaptive ?? examForm.isAdaptive,
                 isPublic: json.data?.isPublic ?? examForm.isPublic,
                 questionCount: json.data?.questionCount ?? examForm.questionCount,
-                difficultyMin: json.data?.difficultyMin ?? examForm.difficultyMin,
                 attemptCount: json.data?.attemptCount ?? item.attemptCount,
                 createdAt: json.data?.createdAt ?? item.createdAt,
               }
@@ -674,10 +668,11 @@ export const SubjectDetail = ({
       setExamDialogOpen(false);
       setEditingExam(null);
       setExamForm({ ...DEFAULT_EXAM_FORM });
+      setExamDialogFeedback(null);
       setFeedback({ type: "success", message: "บันทึกการแก้ไขเรียบร้อย" });
     } catch (error) {
       console.error(error);
-      setFeedback({
+      setExamDialogFeedback({
         type: "error",
         message: error instanceof Error ? error.message : "ไม่สามารถอัปเดตข้อสอบได้",
       });
@@ -948,6 +943,7 @@ export const SubjectDetail = ({
                 if (!open) {
                   setEditingExam(null);
                   setExamForm({ ...DEFAULT_EXAM_FORM });
+                  setExamDialogFeedback(null);
                 }
               }}
             >
@@ -964,6 +960,17 @@ export const SubjectDetail = ({
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 py-2">
+                  {examDialogFeedback && (
+                    <div
+                      className={`rounded-md px-3 py-2 text-sm ${
+                        examDialogFeedback.type === "success"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-destructive/15 text-destructive"
+                      }`}
+                    >
+                      {examDialogFeedback.message}
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-sm font-medium">ชื่อข้อสอบ</label>
                     <Input
@@ -1019,26 +1026,6 @@ export const SubjectDetail = ({
                           })
                         }
                       />
-                    </div>
-                    <div className="space-y-1" hidden={!examForm.isAdaptive}>
-                      <label className="text-sm font-medium">ความยากขั้นต่ำ</label>
-                      <select
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
-                        value={examForm.difficultyMin}
-                        onChange={(event) =>
-                          setExamForm((prev) => ({
-                            ...prev,
-                            difficultyMin: Number(event.target.value),
-                          }))
-                        }
-                        disabled={!examForm.isAdaptive}
-                      >
-                        {difficultyLevels.map((level) => (
-                          <option key={level} value={level}>
-                            ระดับ {level}
-                          </option>
-                        ))}
-                      </select>
                     </div>
                   </div>
                   {!examForm.isAdaptive && (
@@ -1099,7 +1086,6 @@ export const SubjectDetail = ({
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                           ข้อสอบ {exam.questionCount} ข้อ
-                          {exam.isAdaptive ? ` • ความยาก ${exam.difficultyMin}-${exam.difficultyMax}` : ""}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -1436,10 +1422,14 @@ export const SubjectDetail = ({
                         <div key={q.id} className="rounded-md border p-3 text-sm space-y-2">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-medium truncate">{q.body.slice(0, 80)}</span>
-                            {q.difficulty ? <Badge variant="secondary">ระดับ {q.difficulty}</Badge> : null}
+                            <Badge variant={q.difficulty ? "secondary" : "outline"}>
+                              {q.difficulty ? `ระดับ ${q.difficulty}` : "ยังไม่คำนวณ"}
+                            </Badge>
                           </div>
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs text-muted-foreground">ระดับชั้น: {q.gradeLevel}</span>
+                            <span className="text-xs text-muted-foreground">
+                              ระดับชั้น: {q.gradeLevel} • ความยาก: {q.difficulty ? `ระดับ ${q.difficulty}` : "ยังไม่คำนวณ"}
+                            </span>
                             <Button
                               size="sm"
                               variant={picked ? "ghost" : "outline"}
@@ -1470,7 +1460,7 @@ export const SubjectDetail = ({
                         <div className="flex-1">
                           <p className="font-medium truncate">{q.body.slice(0, 80)}</p>
                           <p className="text-xs text-muted-foreground">
-                            {q.difficulty ? `ระดับ ${q.difficulty}` : "ระดับ ไม่ระบุ"} • ชั้น {q.gradeLevel}
+                            ความยาก: {q.difficulty ? `ระดับ ${q.difficulty}` : "ยังไม่คำนวณ"} • ชั้น {q.gradeLevel}
                           </p>
                         </div>
                         <div className="flex items-center gap-1">

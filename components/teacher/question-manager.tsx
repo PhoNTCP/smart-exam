@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { BarChart3, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable } from "@/components/data-table";
@@ -22,8 +22,13 @@ type QuestionRow = {
   createdAt: string;
   updatedAt: string;
   difficulty: number | null;
-  aiReason: string | null;
-  aiModel: string | null;
+  difficultySummary: string | null;
+  difficultySource: string | null;
+  totalAttempts: number;
+  correctCount: number;
+  incorrectCount: number;
+  accuracyPercent: number | null;
+  hasReliableStats: boolean;
   choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
 };
 
@@ -156,32 +161,41 @@ export const QuestionManager = () => {
   }, []);
 
   const handleRescore = useCallback(
-    async (id: string) => {
-      setRescoringId(id);
+    async (question: QuestionRow) => {
+      if (question.totalAttempts === 0) {
+        setFeedback({ type: "error", message: "ข้อนี้ยังไม่มีคนทำ จึงยังคำนวณความยากไม่ได้" });
+        return;
+      }
+      if (question.totalAttempts < 20) {
+        const confirmed = window.confirm(
+          `ข้อนี้มีผู้ทำเพียง ${question.totalAttempts} คน ความยากอาจยังไม่แม่นยำ ต้องการคำนวณต่อหรือไม่?`,
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      setRescoringId(question.id);
       try {
         const response = await fetch("/api/ai/difficulty", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ questionId: id }),
+          body: JSON.stringify({ questionId: question.id }),
         });
 
         if (!response.ok) {
           const json = await response.json().catch(() => ({}));
-          if (response.status === 429) {
-            setFeedback({ type: "error", message: json.message ?? "Queued for nightly batch" });
-            return;
-          }
           throw new Error(json.message ?? "Rescore failed");
         }
 
-        setFeedback({ type: "success", message: "ส่งคำขอประเมินความยากสำเร็จ" });
+        setFeedback({ type: "success", message: "คำนวณความยากจากสถิติสำเร็จ" });
         startTransition(() => {
           fetchQuestions();
           router.refresh();
         });
       } catch (error) {
         console.error(error);
-        setFeedback({ type: "error", message: "ไม่สามารถเรียกประเมินความยากได้" });
+        setFeedback({ type: "error", message: "ไม่สามารถคำนวณความยากได้" });
       } finally {
         setRescoringId(null);
       }
@@ -289,44 +303,47 @@ export const QuestionManager = () => {
         ),
       },
       {
-        header: "ความยาก (AI)",
+        header: "ระดับความยาก",
         accessorKey: "difficulty",
-        cell: ({ getValue }) => {
-          const difficulty = getValue() as number | null;
+        cell: ({ row }) => {
+          const difficulty = row.original.difficulty;
           return (
-            <Badge variant={difficulty ? "secondary" : "outline"}>{difficulty ? `ระดับ ${difficulty}` : "—"}</Badge>
+            <div className="flex flex-col gap-1">
+              <Badge variant={difficulty ? "secondary" : "outline"}>{difficulty ? `ระดับ ${difficulty}` : "ยังไม่คำนวณ"}</Badge>
+              {row.original.difficultySummary ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto justify-start px-0 text-xs"
+                  onClick={() => setReasonPreview({ open: true, question: row.original })}
+                >
+                  ดูสรุป
+                </Button>
+              ) : null}
+              {!row.original.hasReliableStats && row.original.totalAttempts > 0 ? (
+                <span className="text-xs text-amber-700">ตัวอย่างต่ำกว่า 20 คน</span>
+              ) : null}
+            </div>
           );
         },
       },
       {
-        header: "โมเดล (AI)",
-        accessorKey: "aiModel",
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">{row.original.aiModel ?? "—"}</span>
-        ),
+        header: "ผู้ทำ",
+        accessorKey: "totalAttempts",
       },
       {
-        header: "เหตุผล (AI)",
-        accessorKey: "aiReason",
+        header: "ตอบถูก",
+        accessorKey: "correctCount",
+      },
+      {
+        header: "ตอบผิด",
+        accessorKey: "incorrectCount",
+      },
+      {
+        header: "% ตอบถูก",
+        accessorKey: "accuracyPercent",
         cell: ({ row }) => {
-          const reason = row.original.aiReason;
-          if (!reason) {
-            return <span className="text-xs text-muted-foreground">—</span>;
-          }
-          return (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                setReasonPreview({
-                  open: true,
-                  question: row.original,
-                })
-              }
-            >
-              ดูเหตุผล
-            </Button>
-          );
+          return <span>{row.original.accuracyPercent != null ? `${row.original.accuracyPercent}%` : "—"}</span>;
         },
       },
       {
@@ -353,11 +370,11 @@ export const QuestionManager = () => {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => handleRescore(row.original.id)}
-              title="Re-score"
+              onClick={() => handleRescore(row.original)}
+              title="คำนวณความยากจากสถิติ"
               disabled={rescoringId === row.original.id}
             >
-              <Sparkles className="h-4 w-4" />
+              <BarChart3 className="h-4 w-4" />
             </Button>
           </div>
         ),
@@ -410,7 +427,7 @@ export const QuestionManager = () => {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Question Bank</h1>
-          <p className="text-sm text-muted-foreground">จัดการชุดคำถามสำหรับการออกข้อสอบ</p>
+          <p className="text-sm text-muted-foreground">จัดการคำถาม พร้อมดูสถิติการตอบจริงและคำนวณระดับความยากจากข้อมูลผู้ทำ</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button asChild variant="outline">
@@ -619,18 +636,18 @@ export const QuestionManager = () => {
       >
         <DialogContent className="max-w-lg space-y-3">
           <DialogHeader>
-            <DialogTitle>เหตุผลจาก AI</DialogTitle>
+            <DialogTitle>สรุปการคำนวณความยาก</DialogTitle>
           </DialogHeader>
           {reasonPreview.question ? (
             <div className="space-y-2 text-sm text-muted-foreground">
               <p className="font-medium text-foreground">{reasonPreview.question.subject}</p>
               <p className="text-xs text-muted-foreground">
-                โมเดล: <span className="font-medium text-foreground">{reasonPreview.question.aiModel ?? "ไม่ระบุ"}</span>
+                แหล่งข้อมูล: <span className="font-medium text-foreground">{reasonPreview.question.difficultySource ?? "ยังไม่คำนวณ"}</span>
               </p>
-              <p className="whitespace-pre-wrap">{reasonPreview.question.aiReason}</p>
+              <p className="whitespace-pre-wrap">{reasonPreview.question.difficultySummary ?? "ยังไม่มีสรุปการคำนวณ"}</p>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">ไม่มีเหตุผลจาก AI</p>
+            <p className="text-sm text-muted-foreground">ยังไม่มีสรุปการคำนวณ</p>
           )}
         </DialogContent>
       </Dialog>

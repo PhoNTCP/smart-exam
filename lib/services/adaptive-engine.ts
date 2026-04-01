@@ -1,5 +1,6 @@
 import { Prisma, Question } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { PERFORMANCE_DIFFICULTY_MODEL } from "@/lib/services/question-difficulty";
 
 const DEFAULT_TOTAL_QUESTIONS = 10;
 
@@ -11,12 +12,15 @@ const difficultyFromTheta = (theta: number) => {
 };
 
 const latestDifficulty = (
-  question: Question & { aiScores: Array<{ difficulty: number | null; reason: string }> },
-) => question.aiScores[0]?.difficulty ?? 3;
+  question: Question & { aiScores: Array<{ difficulty: number | null; reason: string; modelName: string }> },
+) => (question.aiScores[0]?.modelName === PERFORMANCE_DIFFICULTY_MODEL ? question.aiScores[0]?.difficulty : null) ?? 3;
 
 const latestReason = (
-  question: Question & { aiScores: Array<{ difficulty: number | null; reason: string }> },
-) => question.aiScores[0]?.reason ?? "AI rationale unavailable";
+  question: Question & { aiScores: Array<{ difficulty: number | null; reason: string; modelName: string }> },
+) =>
+  question.aiScores[0]?.modelName === PERFORMANCE_DIFFICULTY_MODEL
+    ? question.aiScores[0]?.reason ?? "ยังไม่มีสรุปความยาก"
+    : "ยังไม่มีข้อมูลความยากจากสถิติจริง";
 
 type QuestionWithMeta = Question & {
   aiScores: Array<{
@@ -74,15 +78,6 @@ const getTotalQuestionsForExam = (exam: NonNullable<AttemptContext>["exam"]) => 
     return Math.max(1, total);
   }
   return Math.max(1, exam.questionCount ?? DEFAULT_TOTAL_QUESTIONS);
-};
-
-const getDifficultyBounds = (exam: NonNullable<AttemptContext>["exam"]) => {
-  const min = exam?.difficultyMin ?? 1;
-  const max = exam?.difficultyMax ?? 5;
-  if (min > max) {
-    return { min: max, max: min };
-  }
-  return { min, max };
 };
 
 const fetchAttemptContext = async (
@@ -156,16 +151,7 @@ const selectNextQuestion = async (
     return null;
   }
 
-  const { min: minDifficulty, max: maxDifficulty } = getDifficultyBounds(context.exam);
-  const pool = candidates.filter((question) => {
-    const diff = question.aiScores[0]?.difficulty;
-    if (diff == null) {
-      return true;
-    }
-    return diff >= minDifficulty && diff <= maxDifficulty;
-  });
-
-  const rankedSource = pool.length > 0 ? pool : candidates;
+  const rankedSource = candidates;
 
   if (context.answers.length === 0 && !context.currentQuestionId) {
     const exactMatches = rankedSource.filter(

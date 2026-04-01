@@ -27,8 +27,6 @@ type PublicExam = {
   isAdaptive: boolean;
   isPublic: boolean;
   questionCount: number;
-  difficultyMin: number;
-  difficultyMax: number;
   attempts: AttemptHistory[];
 };
 
@@ -200,7 +198,7 @@ export const PublicExamBrowser = ({ exams }: PublicExamBrowserProps) => {
                       </div>
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
-                      {exam.questionCount} ข้อ • {exam.difficultyMin}-{exam.difficultyMax}
+                      {exam.questionCount} ข้อ
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{latestResultLabel(exam)}</td>
                     <td className="px-3 py-2 text-muted-foreground">{exam.attempts.length}</td>

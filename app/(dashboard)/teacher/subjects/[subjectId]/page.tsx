@@ -122,8 +122,6 @@ export default async function TeacherSubjectDetailPage({ params }: PageParams) {
     attemptCount: exam.attempts.length,
     completedCount: exam.attempts.filter((attempt: Attempt) => Boolean(attempt.finishedAt)).length,
     questionCount: exam.questionCount,
-    difficultyMin: exam.difficultyMin,
-    difficultyMax: exam.difficultyMax,
   }));
 
   const assignments = subject.assignments.map((assignment: Assignment) => ({

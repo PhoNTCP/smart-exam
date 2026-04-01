@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { incrementAiUsage } from "@/lib/services/ai-usage";
-import { scoreWithAI } from "@/lib/services/ai-difficulty";
+import {
+  accuracyFromStats,
+  difficultyFromAccuracy,
+  MIN_RELIABLE_ATTEMPTS,
+  PERFORMANCE_DIFFICULTY_MODEL,
+  summarizeDifficultyStats,
+} from "@/lib/services/question-difficulty";
 
 const bodySchema = z.object({
   questionId: z.string().cuid(),
@@ -19,38 +24,43 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { questionId } = bodySchema.parse(body);
 
-    const limit = Number(process.env.AI_MAX_CALLS_PER_DAY ?? "500");
-    const usage = incrementAiUsage(limit);
-    if (!usage.allowed) {
-      return NextResponse.json({ message: "Queued for nightly batch" }, { status: 429 });
-    }
-
     const question = await prisma.question.findFirst({
       where: { id: questionId, createdById: session.user.id },
-      select: {
-        id: true,
-        subject: true,
-        gradeLevel: true,
-        body: true,
-      },
+      select: { id: true },
     });
 
     if (!question) {
       return NextResponse.json({ message: "ไม่พบคำถาม" }, { status: 404 });
     }
 
-    const result = await scoreWithAI({
-      subject: question.subject,
-      gradeLevel: question.gradeLevel,
-      body: question.body,
+    const answers = await prisma.attemptAnswer.findMany({
+      where: { questionId },
+      select: { isCorrect: true },
     });
 
-    const aiScore = await prisma.aiScore.create({
+    const totalAttempts = answers.length;
+    if (totalAttempts === 0) {
+      return NextResponse.json({ message: "ข้อนี้ยังไม่มีข้อมูลการทำข้อสอบ" }, { status: 400 });
+    }
+
+    const correctCount = answers.filter((answer) => answer.isCorrect).length;
+    const incorrectCount = totalAttempts - correctCount;
+    const accuracyPercent = accuracyFromStats(correctCount, totalAttempts);
+    const difficulty = difficultyFromAccuracy(accuracyPercent);
+    const reason = summarizeDifficultyStats({
+      totalAttempts,
+      correctCount,
+      incorrectCount,
+      accuracyPercent,
+      difficulty,
+    });
+
+    const score = await prisma.aiScore.create({
       data: {
         questionId,
-        difficulty: result.difficulty,
-        reason: result.reason,
-        modelName: result.modelName,
+        difficulty,
+        reason,
+        modelName: PERFORMANCE_DIFFICULTY_MODEL,
       },
     });
 
@@ -62,19 +72,21 @@ export async function POST(request: Request) {
     return NextResponse.json({
       data: {
         questionId,
-        difficulty: aiScore.difficulty,
-        reason: aiScore.reason,
-        modelName: aiScore.modelName,
+        difficulty: score.difficulty,
+        reason: score.reason,
+        modelName: score.modelName,
+        totalAttempts,
+        correctCount,
+        incorrectCount,
+        accuracyPercent,
+        isReliableSample: totalAttempts >= MIN_RELIABLE_ATTEMPTS,
       },
     });
   } catch (error) {
     console.error(error);
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { message: "ข้อมูลไม่ถูกต้อง", issues: error.flatten() },
-        { status: 422 },
-      );
+      return NextResponse.json({ message: "ข้อมูลไม่ถูกต้อง", issues: error.flatten() }, { status: 422 });
     }
-    return NextResponse.json({ message: "ไม่สามารถประเมินความยากได้" }, { status: 500 });
+    return NextResponse.json({ message: "ไม่สามารถคำนวณความยากได้" }, { status: 500 });
   }
 }

@@ -3,6 +3,10 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureStandardExamQuestions, StandardExamQuestionError } from "@/lib/services/exam-questions";
+import {
+  MIN_RELIABLE_ATTEMPTS,
+  PERFORMANCE_DIFFICULTY_MODEL,
+} from "@/lib/services/question-difficulty";
 
 const createExamSchema = z
   .object({
@@ -11,21 +15,7 @@ const createExamSchema = z
     isAdaptive: z.boolean().optional(),
     isPublic: z.boolean().optional(),
     questionCount: z.coerce.number().int().min(1).max(100).optional(),
-    difficultyMin: z.coerce.number().int().min(1).max(5).optional(),
-    difficultyMax: z.coerce.number().int().min(1).max(5).optional(),
-  })
-  .refine(
-    (data) => {
-      if (data.difficultyMin == null || data.difficultyMax == null) {
-        return true;
-      }
-      return data.difficultyMin <= data.difficultyMax;
-    },
-    {
-      message: "ช่วงความยากไม่ถูกต้อง",
-      path: ["difficultyMax"],
-    },
-  );
+  });
 
 export async function POST(request: Request) {
   try {
@@ -47,20 +37,67 @@ export async function POST(request: Request) {
     }
 
     const questionCount = payload.questionCount ?? 10;
-    const difficultyMin = payload.difficultyMin ?? 1;
-    const difficultyMax = payload.difficultyMax ?? 5;
+    const isAdaptive = payload.isAdaptive ?? true;
+
+    if (isAdaptive) {
+      const subjectQuestions = await prisma.question.findMany({
+        where: {
+          createdById: teacherId,
+          subject: subject.name,
+        },
+        select: {
+          id: true,
+          _count: {
+            select: {
+              attemptLinks: true,
+            },
+          },
+          aiScores: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              difficulty: true,
+              modelName: true,
+            },
+          },
+        },
+      });
+
+      const eligibleQuestions = subjectQuestions.filter((question) => {
+        const latestScore = question.aiScores[0];
+        return (
+          latestScore?.modelName === PERFORMANCE_DIFFICULTY_MODEL &&
+          latestScore.difficulty != null &&
+          question._count.attemptLinks >= MIN_RELIABLE_ATTEMPTS
+        );
+      });
+
+      const difficultyCoverage = new Set(
+        eligibleQuestions
+          .map((question) => question.aiScores[0]?.difficulty)
+          .filter((difficulty): difficulty is number => difficulty != null),
+      );
+
+      if (eligibleQuestions.length < questionCount || difficultyCoverage.size < 5) {
+        return NextResponse.json(
+          {
+            message:
+              "ยังสร้างข้อสอบ Adaptive ไม่ได้ เพราะคำถามที่มีระดับความยากจากข้อมูลจริงยังไม่เพียงพอ ต้องมีผู้ทำอย่างน้อย 20 คนต่อข้อ และควรมีความยากครบทั้ง 5 ระดับก่อน",
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     const exam = await prisma.$transaction(async (tx) => {
       const created = await tx.exam.create({
         data: {
           title: payload.title,
           subjectId: subject.id,
-          isAdaptive: payload.isAdaptive ?? true,
+          isAdaptive,
           isPublic: payload.isPublic ?? false,
           createdById: teacherId,
           questionCount,
-          difficultyMin,
-          difficultyMax,
         },
         include: {
           subjectRef: {
@@ -100,8 +137,6 @@ export async function POST(request: Request) {
         attemptCount: exam._count.attempts,
         createdAt: exam.createdAt,
         questionCount: exam.questionCount,
-        difficultyMin: exam.difficultyMin,
-        difficultyMax: exam.difficultyMax,
       },
     });
   } catch (error) {

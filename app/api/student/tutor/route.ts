@@ -50,6 +50,9 @@ const buildQuestionContext = (params: {
     "",
     "Important tutoring rules:",
     "- Do NOT reveal the exact correct answer or letter.",
+    "- You may teach by referencing the answer choices one by one.",
+    "- Explain why a choice seems plausible, incomplete, or less suitable without declaring which choice is correct.",
+    "- Compare choices based on concepts, keywords, assumptions, or reasoning steps.",
     "- Provide gentle hints, guiding questions, or step-by-step reasoning support.",
     "- Encourage the student to think critically and explain the concept in simple language.",
     "- If the student asks for the answer directly, remind them you can only give hints.",
@@ -121,6 +124,8 @@ export async function POST(request: Request) {
         "Keep responses short (under 6 sentences) and conversational.",
         "Always explain concepts with relatable examples or step-by-step reasoning.",
         "Avoid giving direct exam answers, numeric results, or option letters.",
+        "When answer choices are available, teach by discussing the options and the reasoning behind them without revealing the correct option.",
+        "It is acceptable to mention what to inspect in each choice, contrast them, and point out misunderstandings in a non-final way.",
         "If the student requests the exact answer, politely decline and offer strategy tips instead.",
         "For non-exam questions, be a friendly educational assistant.",
       ].join("\n");

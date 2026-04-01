@@ -4,28 +4,13 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureStandardExamQuestions, StandardExamQuestionError } from "@/lib/services/exam-questions";
 
-const updateExamSchema = z
-  .object({
-    title: z.string().min(2, "กรุณาระบุชื่อข้อสอบ").max(150, "ชื่อข้อสอบยาวเกินไป").optional(),
-    subjectId: z.string().cuid("รหัสวิชาไม่ถูกต้อง").optional(),
-    isAdaptive: z.boolean().optional(),
-    isPublic: z.boolean().optional(),
-    questionCount: z.coerce.number().int().min(1).max(100).optional(),
-    difficultyMin: z.coerce.number().int().min(1).max(5).optional(),
-    difficultyMax: z.coerce.number().int().min(1).max(5).optional(),
-  })
-  .refine(
-    (data) => {
-      if (data.difficultyMin == null || data.difficultyMax == null) {
-        return true;
-      }
-      return data.difficultyMin <= data.difficultyMax;
-    },
-    {
-      message: "ช่วงความยากไม่ถูกต้อง",
-      path: ["difficultyMax"],
-    },
-  );
+const updateExamSchema = z.object({
+  title: z.string().min(2, "กรุณาระบุชื่อข้อสอบ").max(150, "ชื่อข้อสอบยาวเกินไป").optional(),
+  subjectId: z.string().cuid("รหัสวิชาไม่ถูกต้อง").optional(),
+  isAdaptive: z.boolean().optional(),
+  isPublic: z.boolean().optional(),
+  questionCount: z.coerce.number().int().min(1).max(100).optional(),
+});
 
 type RouteParams = {
   params: Promise<{
@@ -80,8 +65,6 @@ export async function PUT(request: Request, { params }: RouteParams) {
           isAdaptive: payload.isAdaptive ?? exam.isAdaptive,
           isPublic: payload.isPublic ?? exam.isPublic,
           questionCount: payload.questionCount ?? exam.questionCount,
-          difficultyMin: payload.difficultyMin ?? exam.difficultyMin,
-          difficultyMax: payload.difficultyMax ?? exam.difficultyMax,
         },
         include: {
           subjectRef: true,
@@ -117,8 +100,6 @@ export async function PUT(request: Request, { params }: RouteParams) {
         attemptCount: updated._count.attempts,
         createdAt: updated.createdAt,
         questionCount: updated.questionCount,
-        difficultyMin: updated.difficultyMin,
-        difficultyMax: updated.difficultyMax,
       },
     });
   } catch (error) {

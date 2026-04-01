@@ -4,6 +4,11 @@ import type { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { questionCreateSchema } from "@/lib/validators/question";
+import {
+  accuracyFromStats,
+  MIN_RELIABLE_ATTEMPTS,
+  PERFORMANCE_DIFFICULTY_MODEL,
+} from "@/lib/services/question-difficulty";
 
 const querySchema = z.object({
   search: z.string().optional(),
@@ -13,31 +18,56 @@ const querySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).optional(),
 });
 
-const formatQuestion = (question: {
-  id: string;
-  subject: string;
-  gradeLevel: string;
-  body: string;
-  explanation: string;
-  shouldRescore: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
-  aiScores: Array<{ difficulty: number | null; reason: string | null; modelName: string | null }>;
-}) => ({
-  id: question.id,
-  subject: question.subject,
-  gradeLevel: question.gradeLevel,
-  body: question.body,
-  explanation: question.explanation,
-  shouldRescore: question.shouldRescore,
-  createdAt: question.createdAt,
-  updatedAt: question.updatedAt,
-  difficulty: question.aiScores[0]?.difficulty ?? null,
-  aiReason: question.aiScores[0]?.reason ?? null,
-  aiModel: question.aiScores[0]?.modelName ?? null,
-  choices: question.choices,
-});
+type LatestScore = {
+  difficulty: number | null;
+  reason: string | null;
+  modelName: string | null;
+};
+
+const formatQuestion = (
+  question: {
+    id: string;
+    subject: string;
+    gradeLevel: string;
+    body: string;
+    explanation: string;
+    shouldRescore: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    choices: Array<{ id: string; text: string; isCorrect: boolean; order: number }>;
+    aiScores: LatestScore[];
+  },
+  stats: {
+    totalAttempts: number;
+    correctCount: number;
+    incorrectCount: number;
+    accuracyPercent: number | null;
+  },
+) => {
+  const latestScore = question.aiScores[0];
+  const statsBasedDifficulty =
+    latestScore?.modelName === PERFORMANCE_DIFFICULTY_MODEL ? latestScore.difficulty ?? null : null;
+
+  return {
+    id: question.id,
+    subject: question.subject,
+    gradeLevel: question.gradeLevel,
+    body: question.body,
+    explanation: question.explanation,
+    shouldRescore: question.shouldRescore,
+    createdAt: question.createdAt,
+    updatedAt: question.updatedAt,
+    difficulty: statsBasedDifficulty,
+    difficultySummary: latestScore?.modelName === PERFORMANCE_DIFFICULTY_MODEL ? latestScore.reason ?? null : null,
+    difficultySource: latestScore?.modelName === PERFORMANCE_DIFFICULTY_MODEL ? latestScore.modelName : null,
+    totalAttempts: stats.totalAttempts,
+    correctCount: stats.correctCount,
+    incorrectCount: stats.incorrectCount,
+    accuracyPercent: stats.accuracyPercent,
+    hasReliableStats: stats.totalAttempts >= MIN_RELIABLE_ATTEMPTS,
+    choices: question.choices,
+  };
+};
 
 export async function GET(request: Request) {
   try {
@@ -78,13 +108,11 @@ export async function GET(request: Request) {
           { explanation: { contains: params.search } },
         ],
       };
-      if (where.AND) {
-        where.AND = Array.isArray(where.AND)
+      where.AND = where.AND
+        ? Array.isArray(where.AND)
           ? [...where.AND, searchFilter]
-          : [where.AND, searchFilter];
-      } else {
-        where.AND = [searchFilter];
-      }
+          : [where.AND, searchFilter]
+        : [searchFilter];
     }
 
     const [items, total, subjectGroups, gradeGroups] = await prisma.$transaction([
@@ -115,8 +143,47 @@ export async function GET(request: Request) {
       }),
     ]);
 
+    const questionIds = items.map((item) => item.id);
+    const answerGroups =
+      questionIds.length > 0
+        ? await prisma.attemptAnswer.groupBy({
+            by: ["questionId", "isCorrect"],
+            where: {
+              questionId: { in: questionIds },
+            },
+            _count: {
+              _all: true,
+            },
+          })
+        : [];
+
+    const statsMap = new Map<
+      string,
+      { totalAttempts: number; correctCount: number; incorrectCount: number; accuracyPercent: number | null }
+    >();
+
+    for (const questionId of questionIds) {
+      const groups = answerGroups.filter((group) => group.questionId === questionId);
+      const correctCount = groups.find((group) => group.isCorrect)?._count._all ?? 0;
+      const incorrectCount = groups.find((group) => !group.isCorrect)?._count._all ?? 0;
+      const totalAttempts = correctCount + incorrectCount;
+      statsMap.set(questionId, {
+        totalAttempts,
+        correctCount,
+        incorrectCount,
+        accuracyPercent: totalAttempts > 0 ? accuracyFromStats(correctCount, totalAttempts) : null,
+      });
+    }
+
     return NextResponse.json({
-      data: items.map((question) => formatQuestion(question)),
+      data: items.map((question) =>
+        formatQuestion(question, statsMap.get(question.id) ?? {
+          totalAttempts: 0,
+          correctCount: 0,
+          incorrectCount: 0,
+          accuracyPercent: null,
+        }),
+      ),
       page,
       pageSize,
       total,
@@ -167,14 +234,21 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ data: formatQuestion(created) }, { status: 201 });
+    return NextResponse.json(
+      {
+        data: formatQuestion(created, {
+          totalAttempts: 0,
+          correctCount: 0,
+          incorrectCount: 0,
+          accuracyPercent: null,
+        }),
+      },
+      { status: 201 },
+    );
   } catch (error) {
     console.error(error);
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { message: "ข้อมูลไม่ถูกต้อง", issues: error.flatten() },
-        { status: 422 },
-      );
+      return NextResponse.json({ message: "ข้อมูลไม่ถูกต้อง", issues: error.flatten() }, { status: 422 });
     }
     return NextResponse.json({ message: "ไม่สามารถสร้างคำถามได้" }, { status: 500 });
   }

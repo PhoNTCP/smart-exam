@@ -47,8 +47,6 @@ export default async function StudentPublicExamsPage() {
     isPublic: exam.isPublic,
     teacherName: exam.createdBy?.name ?? exam.createdBy?.email ?? "ไม่ระบุ",
     questionCount: exam.questionCount,
-    difficultyMin: exam.difficultyMin,
-    difficultyMax: exam.difficultyMax,
     attempts: exam.attempts.map((attempt) => ({
       id: attempt.id,
       startedAt: attempt.startedAt.toISOString(),

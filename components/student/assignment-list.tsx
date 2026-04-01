@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,18 +64,30 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<StudentAssignmentRow | null>(null);
 
+  const groupedAssignments = useMemo(() => {
+    const groups = new Map<string, { subjectName: string; subjectCode: string; assignments: StudentAssignmentRow[] }>();
+
+    for (const assignment of assignments) {
+      const key = `${assignment.subjectName}::${assignment.subjectCode}`;
+      const group = groups.get(key);
+      if (group) {
+        group.assignments.push(assignment);
+        continue;
+      }
+
+      groups.set(key, {
+        subjectName: assignment.subjectName,
+        subjectCode: assignment.subjectCode,
+        assignments: [assignment],
+      });
+    }
+
+    return Array.from(groups.values());
+  }, [assignments]);
+
   const handleStart = async (assignmentId: string) => {
     const target = assignments.find((item) => item.id === assignmentId);
     if (!target) return;
-
-    if (target.status === "COMPLETED") {
-      if (target.attemptId) {
-        router.push(`/student/exams/${target.attemptId}`);
-      } else {
-        setFeedback({ type: "error", message: "งานนี้ทำเสร็จแล้ว" });
-      }
-      return;
-    }
 
     if (target.status === "IN_PROGRESS" && target.attemptId) {
       router.push(`/student/exams/${target.attemptId}`);
@@ -153,91 +165,87 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
       {assignments.length === 0 ? (
         <p className="text-sm text-muted-foreground">ยังไม่มีงานที่ได้รับในขณะนี้</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">วิชา</th>
-                <th className="px-3 py-2 font-medium">ข้อสอบ</th>
-                <th className="px-3 py-2 font-medium">สถานะ</th>
-                <th className="px-3 py-2 font-medium">เริ่มได้</th>
-                <th className="px-3 py-2 font-medium">กำหนดส่ง</th>
-                <th className="px-3 py-2 font-medium">คะแนน</th>
-                <th className="px-3 py-2 font-medium">ทำเสร็จเมื่อ</th>
-                <th className="px-3 py-2 font-medium">จัดการ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assignments.map((assignment) => {
-                const startAtTime = assignment.startAt ? new Date(assignment.startAt) : null;
-                const isValidStart = startAtTime && !Number.isNaN(startAtTime.getTime()) ? startAtTime : null;
-                const isFutureStart =
-                  assignment.status === "ASSIGNED" && isValidStart != null && isValidStart.getTime() > now;
-                const isLoading = loadingId === assignment.id;
-                const isCompleted = assignment.status === "COMPLETED";
-                const buttonDisabled = isLoading || isFutureStart;
-                const buttonLabel =
-                  assignment.status === "COMPLETED"
-                    ? "สำเร็จแล้ว"
-                    : isLoading
-                      ? assignment.status === "IN_PROGRESS"
-                        ? "กำลังเปิด..."
-                        : "กำลังเริ่ม..."
-                      : assignment.status === "IN_PROGRESS"
-                        ? "ทำต่อ"
-                        : isFutureStart
-                          ? "ยังไม่ถึงเวลา"
-                          : "เริ่มทำ";
+        <div className="space-y-6">
+          {groupedAssignments.map((group) => (
+            <section key={`${group.subjectName}-${group.subjectCode}`} className="space-y-3 rounded-lg border bg-card p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">{group.subjectName}</h3>
+                  <p className="text-sm text-muted-foreground">รหัสวิชา {group.subjectCode}</p>
+                </div>
+                <Badge variant="outline">{group.assignments.length} งาน</Badge>
+              </div>
 
-                return (
-                  <tr key={assignment.id} className="border-b last:border-0">
-                    <td className="px-3 py-2 font-medium">
-                      {assignment.subjectName}{" "}
-                      <span className="text-xs text-muted-foreground">({assignment.subjectCode})</span>
-                    </td>
-                    <td className="px-3 py-2">{assignment.examTitle}</td>
-                    <td className="px-3 py-2">
-                      <Badge variant={statusVariant[assignment.status]}>{statusLabel[assignment.status]}</Badge>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.startAt)}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.dueAt)}</td>
-                    <td className="px-3 py-2">{formatScore(assignment.score, assignment.totalQuestions)}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.completedAt)}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-2">
-                        {!isCompleted ? (
-                          <Button
-                            size="sm"
-                            onClick={() => handleStart(assignment.id)}
-                            disabled={buttonDisabled}
-                            title={
-                              isFutureStart && isValidStart
-                                ? `จะเริ่มได้หลังจาก ${isValidStart.toLocaleString()}`
-                                : undefined
-                            }
-                          >
-                            {buttonLabel}
-                          </Button>
-                        ) : null}
-                        <Button size="sm" variant="outline" onClick={() => setSelectedAssignment(assignment)}>
-                          ดูรายละเอียด
-                        </Button>
-                        {assignment.attemptId && assignment.status !== "COMPLETED" ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => router.push(`/student/exams/${assignment.attemptId}`)}
-                          >
-                            เปิดข้อสอบ
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[860px] text-left text-sm">
+                  <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">ข้อสอบ</th>
+                      <th className="px-3 py-2 font-medium">สถานะ</th>
+                      <th className="px-3 py-2 font-medium">เริ่มได้</th>
+                      <th className="px-3 py-2 font-medium">กำหนดส่ง</th>
+                      <th className="px-3 py-2 font-medium">คะแนน</th>
+                      <th className="px-3 py-2 font-medium">ทำเสร็จเมื่อ</th>
+                      <th className="px-3 py-2 font-medium">จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.assignments.map((assignment) => {
+                      const startAtTime = assignment.startAt ? new Date(assignment.startAt) : null;
+                      const isValidStart = startAtTime && !Number.isNaN(startAtTime.getTime()) ? startAtTime : null;
+                      const isFutureStart =
+                        assignment.status === "ASSIGNED" && isValidStart != null && isValidStart.getTime() > now;
+                      const isLoading = loadingId === assignment.id;
+                      const isCompleted = assignment.status === "COMPLETED";
+                      const buttonLabel = isLoading
+                        ? assignment.status === "IN_PROGRESS"
+                          ? "กำลังเปิด..."
+                          : "กำลังเริ่ม..."
+                        : assignment.status === "IN_PROGRESS"
+                          ? "ทำต่อ"
+                          : isFutureStart
+                            ? "ยังไม่ถึงเวลา"
+                            : "เริ่มทำ";
+
+                      return (
+                        <tr key={assignment.id} className="border-b last:border-0">
+                          <td className="px-3 py-2 font-medium">{assignment.examTitle}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant={statusVariant[assignment.status]}>{statusLabel[assignment.status]}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.startAt)}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.dueAt)}</td>
+                          <td className="px-3 py-2">{formatScore(assignment.score, assignment.totalQuestions)}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{formatDateTime(assignment.completedAt)}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap gap-2">
+                              {!isCompleted ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleStart(assignment.id)}
+                                  disabled={isLoading || isFutureStart}
+                                  title={
+                                    isFutureStart && isValidStart
+                                      ? `จะเริ่มได้หลังจาก ${isValidStart.toLocaleString()}`
+                                      : undefined
+                                  }
+                                >
+                                  {buttonLabel}
+                                </Button>
+                              ) : null}
+                              <Button size="sm" variant="outline" onClick={() => setSelectedAssignment(assignment)}>
+                                ดูรายละเอียด
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
         </div>
       )}
 
@@ -279,11 +287,7 @@ export const StudentAssignmentList = ({ initialAssignments }: StudentAssignmentL
               </div>
               <div>
                 <p className="text-muted-foreground">ผลลัพธ์</p>
-                <p className="font-medium">
-                  {selectedAssignment.score != null
-                    ? `คะแนน ${selectedAssignment.score}/${selectedAssignment.totalQuestions}`
-                    : "ยังไม่มีผลลัพธ์"}
-                </p>
+                <p className="font-medium">{formatScore(selectedAssignment.score, selectedAssignment.totalQuestions)}</p>
               </div>
             </div>
           ) : null}
