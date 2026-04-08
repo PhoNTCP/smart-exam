@@ -7,7 +7,6 @@ import { ensureStandardExamQuestions, StandardExamQuestionError } from "@/lib/se
 const updateExamSchema = z.object({
   title: z.string().min(2, "กรุณาระบุชื่อข้อสอบ").max(150, "ชื่อข้อสอบยาวเกินไป").optional(),
   subjectId: z.string().cuid("รหัสวิชาไม่ถูกต้อง").optional(),
-  isAdaptive: z.boolean().optional(),
   isPublic: z.boolean().optional(),
   questionCount: z.coerce.number().int().min(1).max(100).optional(),
 });
@@ -62,7 +61,6 @@ export async function PUT(request: Request, { params }: RouteParams) {
         data: {
           title: payload.title ?? exam.title,
           subjectId,
-          isAdaptive: payload.isAdaptive ?? exam.isAdaptive,
           isPublic: payload.isPublic ?? exam.isPublic,
           questionCount: payload.questionCount ?? exam.questionCount,
         },

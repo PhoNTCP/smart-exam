@@ -285,32 +285,6 @@ export const SubjectDetail = ({
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถลบข้อสอบได้" });
     }
   };
-    const handleToggleExamMode = async (exam: ExamRow) => {
-    setFeedback(null);
-    try {
-      const response = await fetch(`/api/exams/${exam.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isAdaptive: !exam.isAdaptive }),
-      });
-      const json = await response.json();
-      if (!response.ok) {
-        throw new Error(json.message ?? "ไม่สามารถเปลี่ยนโหมดข้อสอบได้");
-      }
-      setExams((prev) =>
-        prev.map((item) =>
-          item.id === exam.id
-            ? { ...item, isAdaptive: json.data.isAdaptive ?? !item.isAdaptive }
-            : item,
-        ),
-      );
-      setFeedback({ type: "success", message: "เปลี่ยนโหมดข้อสอบเรียบร้อย" });
-    } catch (error) {
-      console.error(error);
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "ไม่สามารถเปลี่ยนโหมดข้อสอบได้" });
-    }
-  };
-
   const handleRemoveStudent = async (userId: string) => {
     setFeedback(null);
     try {
@@ -631,7 +605,7 @@ export const SubjectDetail = ({
     setExamSubmitting(true);
     setExamDialogFeedback(null);
     try {
-      const questionCountPayload = examForm.isAdaptive
+      const questionCountPayload = editingExam.isAdaptive
         ? examForm.questionCount
         : selectedStandardQuestions.length || editingExam?.questionCount || examForm.questionCount;
 
@@ -640,7 +614,6 @@ export const SubjectDetail = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: examForm.title.trim(),
-          isAdaptive: examForm.isAdaptive,
           isPublic: examForm.isPublic,
           questionCount: questionCountPayload,
         }),
@@ -653,13 +626,13 @@ export const SubjectDetail = ({
       setExams((prev) =>
         prev.map((item) =>
           item.id === editingExam.id
-            ? {
-                ...item,
-                title: json.data?.title ?? examForm.title.trim(),
-                isAdaptive: json.data?.isAdaptive ?? examForm.isAdaptive,
-                isPublic: json.data?.isPublic ?? examForm.isPublic,
-                questionCount: json.data?.questionCount ?? examForm.questionCount,
-                attemptCount: json.data?.attemptCount ?? item.attemptCount,
+              ? {
+                  ...item,
+                  title: json.data?.title ?? examForm.title.trim(),
+                  isAdaptive: item.isAdaptive,
+                  isPublic: json.data?.isPublic ?? examForm.isPublic,
+                  questionCount: json.data?.questionCount ?? examForm.questionCount,
+                  attemptCount: json.data?.attemptCount ?? item.attemptCount,
                 createdAt: json.data?.createdAt ?? item.createdAt,
               }
             : item,
@@ -981,16 +954,22 @@ export const SubjectDetail = ({
                   </div>
                   <div className="space-y-1">
                     <label className="text-sm font-medium">โหมดข้อสอบ</label>
-                    <select
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
-                      value={examForm.isAdaptive ? "adaptive" : "standard"}
-                      onChange={(event) =>
-                        setExamForm((prev) => ({ ...prev, isAdaptive: event.target.value === "adaptive" }))
-                      }
-                    >
-                      <option value="adaptive">Adaptive</option>
-                      <option value="standard">Standard</option>
-                    </select>
+                    {editingExam ? (
+                      <div className="flex h-10 items-center rounded-md border border-input bg-muted/30 px-3 text-sm">
+                        {examForm.isAdaptive ? "Adaptive" : "Standard"}
+                      </div>
+                    ) : (
+                      <select
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
+                        value={examForm.isAdaptive ? "adaptive" : "standard"}
+                        onChange={(event) =>
+                          setExamForm((prev) => ({ ...prev, isAdaptive: event.target.value === "adaptive" }))
+                        }
+                      >
+                        <option value="adaptive">Adaptive</option>
+                        <option value="standard">Standard</option>
+                      </select>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-sm font-medium">การมองเห็นข้อสอบ</div>
@@ -1094,13 +1073,6 @@ export const SubjectDetail = ({
                             เลือกคำถาม
                           </Button>
                         )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleToggleExamMode(exam)}
-                        >
-                          สลับเป็น {exam.isAdaptive ? "Standard" : "Adaptive"}
-                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
