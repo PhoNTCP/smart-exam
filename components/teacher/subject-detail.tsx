@@ -165,7 +165,11 @@ export const SubjectDetail = ({
   const [assignments, setAssignments] = useState<AssignmentRow[]>(initialAssignments);
   const [summaryState, setSummaryState] = useState(summary);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [examDialogFeedback, setExamDialogFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [examDialogFeedback, setExamDialogFeedback] = useState<{
+    type: "success" | "error" | "warning";
+    message: string;
+  } | null>(null);
+  const [pendingCoverageConfirmation, setPendingCoverageConfirmation] = useState(false);
   const [enrollEmail, setEnrollEmail] = useState("");
   const [enrolling, setEnrolling] = useState(false);
   const [examDialogOpen, setExamDialogOpen] = useState(false);
@@ -312,22 +316,36 @@ export const SubjectDetail = ({
   const handleOpenCreateExam = () => {
     setFeedback(null);
     setExamDialogFeedback(null);
+    setPendingCoverageConfirmation(false);
     setEditingExam(null);
     setExamForm({ ...DEFAULT_EXAM_FORM });
     setSelectedStandardQuestions([]);
     setExamDialogOpen(true);
   };
 
-  const handleOpenEditExam = (exam: ExamRow) => {
+  const handleOpenEditExam = async (exam: ExamRow) => {
     setFeedback(null);
     setExamDialogFeedback(null);
+    setPendingCoverageConfirmation(false);
     setEditingExam(exam);
+    setSelectedStandardQuestions([]);
     setExamForm({
       title: exam.title,
       isAdaptive: exam.isAdaptive,
       isPublic: exam.isPublic,
       questionCount: exam.questionCount,
     });
+    if (!exam.isAdaptive) {
+      try {
+        await loadSelectedQuestions(exam.id);
+      } catch (error) {
+        console.error(error);
+        setExamDialogFeedback({
+          type: "error",
+          message: error instanceof Error ? error.message : "ไม่สามารถโหลดชุดคำถามเดิมได้",
+        });
+      }
+    }
     setExamDialogOpen(true);
   };
 
@@ -506,7 +524,7 @@ export const SubjectDetail = ({
     return true;
   };
 
-  const handleCreateExam = async () => {
+  const handleCreateExam = async (confirmIncompleteCoverage = false) => {
     if (!validateExamForm()) {
       return;
     }
@@ -516,6 +534,9 @@ export const SubjectDetail = ({
     }
     setExamSubmitting(true);
     setExamDialogFeedback(null);
+    if (!confirmIncompleteCoverage) {
+      setPendingCoverageConfirmation(false);
+    }
     try {
       const questionCountPayload = examForm.isAdaptive
         ? examForm.questionCount
@@ -530,10 +551,20 @@ export const SubjectDetail = ({
           isAdaptive: examForm.isAdaptive,
           isPublic: examForm.isPublic,
           questionCount: questionCountPayload,
+          confirmIncompleteCoverage,
         }),
       });
       const json = await response.json();
       if (!response.ok) {
+        if (response.status === 409 && json.requiresConfirmation) {
+          setPendingCoverageConfirmation(true);
+          setExamDialogFeedback({
+            type: "warning",
+            message: json.message ?? "ระดับความยากยังไม่ครบ ระบบต้องการการยืนยันก่อนสร้างต่อ",
+          });
+          return;
+        }
+        setPendingCoverageConfirmation(false);
         setExamDialogFeedback({ type: "error", message: json.message ?? "ไม่สามารถสร้างข้อสอบได้" });
         return;
       }
@@ -582,10 +613,12 @@ export const SubjectDetail = ({
       setEditingExam(null);
       setExamForm({ ...DEFAULT_EXAM_FORM });
       setExamDialogFeedback(null);
+      setPendingCoverageConfirmation(false);
       setSelectedStandardQuestions([]);
       setFeedback({ type: "success", message: "สร้างข้อสอบเรียบร้อย" });
     } catch (error) {
       console.error(error);
+      setPendingCoverageConfirmation(false);
       setExamDialogFeedback({
         type: "error",
         message: error instanceof Error ? error.message : "ไม่สามารถสร้างข้อสอบได้",
@@ -917,6 +950,7 @@ export const SubjectDetail = ({
                   setEditingExam(null);
                   setExamForm({ ...DEFAULT_EXAM_FORM });
                   setExamDialogFeedback(null);
+                  setPendingCoverageConfirmation(false);
                 }
               }}
             >
@@ -938,7 +972,9 @@ export const SubjectDetail = ({
                       className={`rounded-md px-3 py-2 text-sm ${
                         examDialogFeedback.type === "success"
                           ? "bg-emerald-100 text-emerald-700"
-                          : "bg-destructive/15 text-destructive"
+                          : examDialogFeedback.type === "warning"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-destructive/15 text-destructive"
                       }`}
                     >
                       {examDialogFeedback.message}
@@ -1016,7 +1052,11 @@ export const SubjectDetail = ({
                             เลือกและเรียงลำดับคำถามได้ (จำนวนที่เลือก: {selectedStandardQuestions.length})
                           </p>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => handleOpenQuestionPicker(null)}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenQuestionPicker(editingExam)}
+                        >
                           เลือกคำถาม
                         </Button>
                       </div>
@@ -1027,7 +1067,11 @@ export const SubjectDetail = ({
                       ยกเลิก
                     </Button>
                     <Button
-                      onClick={editingExam ? handleUpdateExam : handleCreateExam}
+                      onClick={() =>
+                        editingExam
+                          ? handleUpdateExam()
+                          : handleCreateExam(pendingCoverageConfirmation)
+                      }
                       disabled={examSubmitting}
                     >
                       {examSubmitting
@@ -1036,6 +1080,8 @@ export const SubjectDetail = ({
                           : "กำลังสร้าง..."
                         : editingExam
                           ? "บันทึกการแก้ไข"
+                          : pendingCoverageConfirmation
+                            ? "ยืนยันสร้างต่อ"
                           : "สร้างข้อสอบ"}
                     </Button>
                   </div>

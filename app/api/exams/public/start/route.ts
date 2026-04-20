@@ -64,7 +64,7 @@ export async function POST(request: Request) {
           subjectName: exam.subjectRef.name,
           questionCount: exam.questionCount,
         },
-        { force: true },
+        { force: false },
       );
     }
 

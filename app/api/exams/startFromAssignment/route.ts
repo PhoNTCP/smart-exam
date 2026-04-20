@@ -69,7 +69,7 @@ export async function POST(request: Request) {
             subjectName: subject?.name ?? examRecord.subjectRef?.name ?? "",
             questionCount: examRecord.questionCount,
           },
-          { force: true },
+          { force: false },
         );
       }
 

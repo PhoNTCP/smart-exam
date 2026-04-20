@@ -40,7 +40,7 @@ export default async function StudentAttemptPage({ params }: AttemptPageProps) {
   }
 
   const examInfo = (attempt as typeof attempt & {
-    exam: { title: string; subjectRef: { name: string; code: string }; isAdaptive: boolean };
+    exam: { title: string; subjectRef: { name: string; code: string }; isAdaptive: boolean; isPublic: boolean };
   }).exam;
 
   const isAdaptive = Boolean(examInfo.isAdaptive);
@@ -93,6 +93,7 @@ export default async function StudentAttemptPage({ params }: AttemptPageProps) {
         examTitle: examInfo.title,
         subjectName: examInfo.subjectRef.name,
         subjectCode: examInfo.subjectRef.code,
+        isPublic: Boolean(examInfo.isPublic),
         question: assignment.question,
         answeredCount: assignment.answeredCount,
         total: assignment.totalQuestions,

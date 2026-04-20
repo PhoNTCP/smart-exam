@@ -3,10 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureStandardExamQuestions, StandardExamQuestionError } from "@/lib/services/exam-questions";
-import {
-  MIN_RELIABLE_ATTEMPTS,
-  PERFORMANCE_DIFFICULTY_MODEL,
-} from "@/lib/services/question-difficulty";
+import { PERFORMANCE_DIFFICULTY_MODEL } from "@/lib/services/question-difficulty";
 
 const createExamSchema = z
   .object({
@@ -15,6 +12,7 @@ const createExamSchema = z
     isAdaptive: z.boolean().optional(),
     isPublic: z.boolean().optional(),
     questionCount: z.coerce.number().int().min(1).max(100).optional(),
+    confirmIncompleteCoverage: z.boolean().optional(),
   });
 
 export async function POST(request: Request) {
@@ -47,11 +45,6 @@ export async function POST(request: Request) {
         },
         select: {
           id: true,
-          _count: {
-            select: {
-              attemptLinks: true,
-            },
-          },
           aiScores: {
             orderBy: { createdAt: "desc" },
             take: 1,
@@ -65,11 +58,7 @@ export async function POST(request: Request) {
 
       const eligibleQuestions = subjectQuestions.filter((question) => {
         const latestScore = question.aiScores[0];
-        return (
-          latestScore?.modelName === PERFORMANCE_DIFFICULTY_MODEL &&
-          latestScore.difficulty != null &&
-          question._count.attemptLinks >= MIN_RELIABLE_ATTEMPTS
-        );
+        return latestScore?.modelName === PERFORMANCE_DIFFICULTY_MODEL && latestScore.difficulty != null;
       });
 
       const difficultyCoverage = new Set(
@@ -78,13 +67,36 @@ export async function POST(request: Request) {
           .filter((difficulty): difficulty is number => difficulty != null),
       );
 
-      if (eligibleQuestions.length < questionCount || difficultyCoverage.size < 5) {
+      if (eligibleQuestions.length < questionCount) {
+        console.log("Eligible Questions:", eligibleQuestions.length);
+        console.log("Difficulty Coverage:", difficultyCoverage.size);
+        console.log("Required Questions:", questionCount);
         return NextResponse.json(
           {
             message:
-              "ยังสร้างข้อสอบ Adaptive ไม่ได้ เพราะคำถามที่มีระดับความยากจากข้อมูลจริงยังไม่เพียงพอ ต้องมีผู้ทำอย่างน้อย 20 คนต่อข้อ และควรมีความยากครบทั้ง 5 ระดับก่อน",
+              "ยังสร้างข้อสอบ Adaptive ไม่ได้ เพราะคำถามที่มีระดับความยากจากข้อมูลจริงยังไม่เพียงพอ ต้องมีข้อที่คำนวณระดับความยากแล้วให้ครบตามจำนวนข้อสอบก่อน",
+            eligibleQuestions: eligibleQuestions.length,
+            difficultyCoverage: Array.from(difficultyCoverage).sort((a, b) => a - b),
+            requiredQuestions: questionCount,
           },
           { status: 400 },
+        );
+      }
+
+      if (difficultyCoverage.size < 5 && !payload.confirmIncompleteCoverage) {
+        return NextResponse.json(
+          {
+            message: `ระดับความยากยังไม่ครบ 5 ระดับ ตอนนี้มี ${difficultyCoverage.size} ระดับ (${Array.from(
+              difficultyCoverage,
+            )
+              .sort((a, b) => a - b)
+              .join(", ") || "-"}) หากสร้างต่อ ระบบ Adaptive จะใช้เฉพาะระดับที่มีอยู่`,
+            eligibleQuestions: eligibleQuestions.length,
+            difficultyCoverage: Array.from(difficultyCoverage).sort((a, b) => a - b),
+            requiredQuestions: questionCount,
+            requiresConfirmation: true,
+          },
+          { status: 409 },
         );
       }
     }

@@ -23,6 +23,7 @@ type AttemptRunnerProps = {
     examTitle: string;
     subjectName: string;
     subjectCode?: string;
+    isPublic: boolean;
     question: AttemptQuestion;
     answeredCount: number;
     total: number;
@@ -43,6 +44,8 @@ type AttemptSummary = {
 
 export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
   const router = useRouter();
+  const returnPath = initial.isPublic ? "/student/public-exams" : "/student/exams";
+  const returnLabel = initial.isPublic ? "กลับไปหน้า Public Exams" : "กลับไปเลือกข้อสอบอื่น";
   const [question, setQuestion] = useState<AttemptQuestion | null>(initial.question);
   const [answeredCount, setAnsweredCount] = useState(initial.answeredCount);
   const [theta, setTheta] = useState(initial.theta);
@@ -211,8 +214,8 @@ export const ExamAttemptRunner = ({ initial }: AttemptRunnerProps) => {
             <p>ตอบทั้งหมด: {summary.answered} ข้อ</p>
             <div className="flex gap-3 pt-4">
               <Button onClick={() => router.push("/student/progress")}>ดูความก้าวหน้า</Button>
-              <Button variant="outline" onClick={() => router.push("/student/exams")}>
-                กลับไปเลือกข้อสอบอื่น
+              <Button variant="outline" onClick={() => router.push(returnPath)}>
+                {returnLabel}
               </Button>
             </div>
           </CardContent>

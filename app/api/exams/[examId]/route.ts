@@ -79,7 +79,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
             subjectName: result.subjectRef?.name ?? subjectName,
             questionCount: result.questionCount,
           },
-          { force: true },
+          { force: false },
         );
       }
 
